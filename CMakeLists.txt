@@ -1,0 +1,9 @@
+cmake_minimum_required(VERSION 3.5)
+project(opencv5_dnn)
+set (CMAKE_CXX_STANDARD 17)
+find_package( OpenCV REQUIRED )
+file(GLOB_RECURSE opencv5_dnn_files *.cpp *.hpp)
+set(target opencv5_dnn)
+
+add_executable(${target} ${opencv5_dnn_files})
+target_link_libraries(${target} ${OpenCV_LIBS})

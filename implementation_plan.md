@@ -1,0 +1,36 @@
+# OpenCV 5 DNN implementation plan
+
+- [+] copy parts from https://github.com/opencv/opencv/pull/22810
+- [ ] (postpone) download and compile libprotobuf-c and proto-c
+- [ ] (postpone) download fresh onnx.pb3, generate parser
+- [+/-] define the new API for model and graph construction out of operations
+- [ ] add functions to dump graphs
+- [ ] create onnx parser, test it
+- [ ] add api for shape & type inference with block layout support
+- [ ] add API for backends
+- [ ] implement api for shape & type inference for a few basic ops, test it
+- [ ] implement constant folding
+- [ ] implement buffer assigner
+- [ ] add draft cpu backend: implementation of basic operations
+- [ ] implement very basic engine to run the operations
+- [ ] add tracing and profiling
+- [ ] add new preprocessing for images
+- [ ] run resnet-50
+- [ ] add postprocessing for yolo
+- [ ] run yolo
+- [ ] add graph optimization based on pattern matching
+    - [ ] conv + activation
+    - [ ] matmul [+ bias] + activation
+    - [ ] conv + batchnorm
+    - [ ] ...
+- [ ] add tokenizer
+- [ ] add postprocessing for llama
+- [ ] add fusion for attention blocks
+- [ ] add support for kv-cache to engine (if any)
+- [ ] run llama
+- [ ] run ViT
+- [ ] run SD
+- [ ] implement OpenCL backend to run resnet-50, yolo, llama and SD on GPU
+- [ ] add graph fusion for complex activations
+- [ ] run CLIP
+- [ ] run SegmentAnything
