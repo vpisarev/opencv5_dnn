@@ -6,4 +6,5 @@ file(GLOB_RECURSE opencv5_dnn_files *.cpp *.hpp)
 set(target opencv5_dnn)
 
 add_executable(${target} ${opencv5_dnn_files})
+target_include_directories(${target} PUBLIC "${CMAKE_SOURCE_DIR}/include/")
 target_link_libraries(${target} ${OpenCV_LIBS})
