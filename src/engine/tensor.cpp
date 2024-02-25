@@ -9,12 +9,48 @@ namespace cv { namespace dnn {
 
 ///////////////////////////// TensorSize /////////////////////////////
 
+static void finalizeBlockLayout(TensorSize& size)
+{
+    if (size.layout == LAYOUT_NCHWc) {
+        CV_Assert(size.ndims >= 4);
+        int64_t C0 = size.size[size.ndims-1];
+        CV_Assert(C0 > 1 && (C0 & (C0-1)) == 0);
+        size.C = (int64_t)size.size[1]*size.size[size.ndims-1];
+    }
+}
+
 TensorSize::TensorSize()
 {
     layout = LAYOUT_UNKNOWN;
     ndims = 1;
     C = 0;
     size[0] = 0;
+}
+
+TensorSize::TensorSize(int ndims_, const int64_t* size_, TensorLayout layout_)
+{
+    layout = layout_;
+    CV_Assert(0 <= ndims_ && ndims_ <= MAX_NDIMS);
+    ndims = ndims_;
+    for (int i = 0; i < ndims; i++) {
+        size[i] = size_[i];
+        CV_Assert(size[i] >= 0);
+    }
+    finalizeBlockLayout(*this);
+}
+
+TensorSize::TensorSize(std::initializer_list<int64_t> size_, TensorLayout layout_)
+{
+    layout = layout_;
+    size_t sz = size_.size();
+    CV_Assert(sz <= MAX_NDIMS);
+    ndims = (int)sz;
+    auto it = size_.begin();
+    for (int i = 0; i < ndims; i++, ++it) {
+        size[i] = *it;
+        CV_Assert(size[i] >= 0);
+    }
+    finalizeBlockLayout(*this);
 }
 
 size_t TensorSize::total() const
@@ -35,16 +71,11 @@ TensorSize TensorSize::fromArray(InputArray m, TensorLayout layout_)
     size.layout = layout_;
 
     if (!m.empty()) {
-        int msize[TensorSize::MAX_TENSOR_DIMS];
+        int msize[TensorSize::MAX_NDIMS];
         size.ndims = m.sizend(msize);
         for (int i = 0; i < size.ndims; i++)
             size.size[i] = msize[i];
-        if (layout_ == LAYOUT_NCHWc) {
-            CV_Assert(size.ndims >= 4);
-            int64_t C0 = msize[size.ndims-1];
-            CV_Assert(C0 > 1 && (C0 & (C0-1)) == 0);
-            size.C = (int64_t)msize[1]*msize[size.ndims-1];
-        }
+        finalizeBlockLayout(size);
     }
     return size;
 }
@@ -421,8 +452,8 @@ void* Tensor::data() const
 
 Mat Tensor::getMat() const
 {
-    int mshape[TensorSize::MAX_TENSOR_DIMS];
-    int mdims = size_.toMatShape(mshape, TensorSize::MAX_TENSOR_DIMS);
+    int mshape[TensorSize::MAX_NDIMS];
+    int mdims = size_.toMatShape(mshape, TensorSize::MAX_NDIMS);
     void* dataptr = data();
     return Mat(mdims, mshape, type_, dataptr);
 }
@@ -610,7 +641,7 @@ template<> struct Fmt<cv::bfloat16_t>
 };
 
 template <typename _Tp>
-static void dumpRow(const _Tp* ptr, int64_t n, size_t ofs, int64_t border)
+static void dumpRow(std::ostream& strm, const _Tp* ptr, int64_t n, size_t ofs, int64_t border)
 {
     char buf[128];
     const char* fmt = Fmt<_Tp>::fmt();
@@ -618,49 +649,51 @@ static void dumpRow(const _Tp* ptr, int64_t n, size_t ofs, int64_t border)
     if (border == 0)
         border = ndump;
     for (i = 0; i < ndump; i++) {
-        int j = n == ndump || i < border ? i : i == border ? -1 : n-border*2-1+i;
+        int64_t j = n == ndump || i < border ? i : i == border ? -1 : n-border*2-1+i;
         if (i > 0)
-            printf(", ");
-        if (j >= 0)
-            printf(fmt, (typename Fmt<_Tp>::temp_type)ptr[ofs + j]);
-        else
-            printf("... ");
+            strm << ", ";
+        if (j >= 0) {
+            snprintf(buf, sizeof(buf), fmt, (typename Fmt<_Tp>::temp_type)ptr[ofs + j]);
+            strm << buf;
+        } else
+            strm << "... ";
     }
 }
 
-static void dumpSlice(const Tensor& t, const size_t* step, int d, size_t ofs, int64_t border)
+static void dumpSlice(std::ostream& strm, const Tensor& t, const size_t* step, int d, size_t ofs, int64_t border)
 {
-    int ndims = t.shape.ndims;
-    int64_t n = d >= ndims ? 1 : (int)t.shape.shape[d];
+    TensorSize size = t.size();
+    int ndims = size.ndims;
+    int64_t n = d >= ndims ? 1 : size.size[d];
     if (d >= ndims - 1) {
         int typ = t.type();
         void* data = t.data();
         if (typ == CV_8U)
-            dumpRow((const uint8_t*)data, n, ofs, border);
+            dumpRow(strm, (const uint8_t*)data, n, ofs, border);
         else if (typ == CV_8S)
-            dumpRow((const int8_t*)data, n, ofs, border);
+            dumpRow(strm, (const int8_t*)data, n, ofs, border);
         else if (typ == CV_16U)
-            dumpRow((const uint16_t*)data, n, ofs, border);
+            dumpRow(strm, (const uint16_t*)data, n, ofs, border);
         else if (typ == CV_16S)
-            dumpRow((const int16_t*)data, n, ofs, border);
+            dumpRow(strm, (const int16_t*)data, n, ofs, border);
         else if (typ == CV_32U)
-            dumpRow((const unsigned*)data, n, ofs, border);
+            dumpRow(strm, (const unsigned*)data, n, ofs, border);
         else if (typ == CV_32S)
-            dumpRow((const int*)data, n, ofs, border);
+            dumpRow(strm, (const int*)data, n, ofs, border);
         else if (typ == CV_64U)
-            dumpRow((const uint64_t*)data, n, ofs, border);
+            dumpRow(strm, (const uint64_t*)data, n, ofs, border);
         else if (typ == CV_64S)
-            dumpRow((const int64_t*)data, n, ofs, border);
+            dumpRow(strm, (const int64_t*)data, n, ofs, border);
         else if (typ == CV_32F)
-            dumpRow((const float*)data, n, ofs, border);
+            dumpRow(strm, (const float*)data, n, ofs, border);
         else if (typ == CV_64F)
-            dumpRow((const double*)data, n, ofs, border);
+            dumpRow(strm, (const double*)data, n, ofs, border);
         else if (typ == CV_16F)
-            dumpRow((const cv::float16_t*)data, n, ofs, border);
+            dumpRow(strm, (const cv::float16_t*)data, n, ofs, border);
         else if (typ == CV_16BF)
-            dumpRow((const cv::bfloat16_t*)data, n, ofs, border);
+            dumpRow(strm, (const cv::bfloat16_t*)data, n, ofs, border);
         else if (typ == CV_Bool)
-            dumpRow((const bool*)data, n, ofs, border);
+            dumpRow(strm, (const bool*)data, n, ofs, border);
         else {
             CV_Error(Error::StsNotImplemented, "unsupported type");
         }
@@ -671,25 +704,24 @@ static void dumpSlice(const Tensor& t, const size_t* step, int d, size_t ofs, in
             if (i > 0 && !dots) {
                 int nempty_lines = ndims - 2 - d;
                 for (int k = 0; k < nempty_lines; k++)
-                    printf("\n");
+                    strm << "\n";
             }
             if (i > 0)
-                printf("\n");
+                strm << "\n";
             int64_t j = n == ndump || i < border ? i :
                         i == border ? -1 :
                         n - border*2 - 1 + i;
             bool dots = j < 0;
             if (!dots)
-                dumpSlice(t, step, d+1, ofs + j*step[d], border);
+                dumpSlice(strm, t, step, d+1, ofs + j*step[d], border);
             else
-                printf("...");
+                strm << "...";
         }
     }
 }
 
-void Tensor::dump(std::ostream& strm, int indent, int context,
+void Tensor::dump(std::ostream& strm, int indent, int border0,
                   int maxsz_all, bool braces) const
-                  int border0, int maxsz_all, bool braces)
 {
     Tensor temp;
     const Tensor* t = this;
@@ -701,15 +733,15 @@ void Tensor::dump(std::ostream& strm, int indent, int context,
     if (sz_all == 0) {
         strm << "no data";
     } else {
-        int ndims = size.ndims;
-        int border = szall < (size_t)maxsz_all ? 0 : border0;
-        size_t step[TensorShape::MAX_TENSOR_DIMS];
+        int ndims = size_.ndims;
+        int64_t border = sz_all < (size_t)maxsz_all ? 0 : border0;
+        size_t step[TensorSize::MAX_NDIMS];
         step[ndims-1] = 1;
         for (int i = ndims-2; i >= 0; i--)
-            step[i] = step[i+1]*t.shape.shape[i+1];
+            step[i] = step[i+1]*size_.size[i+1];
         if (braces)
             printf("[");
-        dumpSlice(t, step, 0, 0, border);
+        dumpSlice(strm, *t, step, 0, 0, border);
         if (braces)
             printf("]\n");
         else

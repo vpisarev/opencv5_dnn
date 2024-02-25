@@ -313,7 +313,7 @@ void dump(const Tensor& t, int border0, int maxsz_all, bool braces)
     } else {
         int ndims = t.shape.ndims;
         int border = szall < (size_t)maxsz_all ? 0 : border0;
-        size_t step[TensorShape::MAX_TENSOR_DIMS];
+        size_t step[TensorShape::MAX_NDIMS];
         step[ndims-1] = 1;
         for (int i = ndims-2; i >= 0; i--)
             step[i] = step[i+1]*t.shape.shape[i+1];

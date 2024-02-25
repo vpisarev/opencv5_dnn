@@ -42,11 +42,11 @@ struct CV_EXPORTS TensorSize
     size_t total() const;
     bool empty() const;
     void dump(std::ostream& strm) const;
-    enum {MAX_TENSOR_DIMS=10};
+    enum {MAX_NDIMS=10};
     TensorLayout layout;
     int ndims;
     int64_t C;
-    int64_t size[MAX_TENSOR_DIMS];
+    int64_t size[MAX_NDIMS];
 };
 
 // when both 'layout' and 'another.layout' are block layouts, we also check 'C == another.C'

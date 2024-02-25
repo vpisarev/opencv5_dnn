@@ -7,6 +7,8 @@
 
 namespace cv { namespace dnn {
 
+MemoryManager::~MemoryManager() {}
+
 struct CPUMemoryManager : MemoryManager
 {
     void* allocate(Device*, size_t bufsize) CV_OVERRIDE { return bufsize > 0 ? malloc(bufsize) : 0; }
@@ -24,12 +26,13 @@ struct CPUMemoryManager : MemoryManager
             memcpy((char*)handle + offset, src, size);
     }
     void copyWithinDevice(Device* device, const void* srchandle, size_t srcoffset,
-                          void* dsthandle, size_t dstoffset, size_t size)
+                          void* dsthandle, size_t dstoffset, size_t size) CV_OVERRIDE
     {
         if (size > 0)
             memcpy((char*)dsthandle + dstoffset, (char*)srchandle + srcoffset, size);
     }
-    void fill(Device* device, void* handle, size_t offset, size_t nelems, const void* value, size_t vsize)
+    void fill(Device* device, void* handle, size_t offset,
+              size_t nelems, const void* value, size_t vsize) CV_OVERRIDE
     {
         if (nelems == 0)
             return;
