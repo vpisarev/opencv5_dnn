@@ -220,8 +220,8 @@ public:
     void unmap(BufAccess access=DNN_BUF_RW);
 
     void dump(std::ostream& strm, int indent, int context=3,
-              int maxsz_all=100, bool braces=true) const;
-    void dumpSmall(std::ostream& strm, int maxsz_small=10, bool braces=true) const;
+              size_t maxsz_all=100, bool braces=true) const;
+    void dumpSmall(std::ostream& strm, size_t maxsz_small) const;
 
 protected:
     enum { CONTINUOUS_FLAG=1, BUFFER_SLICE_FLAG=2 };
@@ -260,7 +260,7 @@ public:
     virtual ~BaseOp();
     virtual std::string_view origname() const;
     virtual std::string_view name() const;
-    virtual void dump(std::ostream& strm, int indent, int maxsz_small=10) const;
+    virtual void dumpAttrs(std::ostream& strm, int indent, size_t maxsz_small) const;
     static void dumpTensorAttr(std::ostream& strm, std::string_view name, const Tensor& t, int indent);
     static void dumpScalarAttr(std::ostream& strm, std::string_view name, int type, const void* scalar, int indent);
     template<typename _Tp> static void dumpScalarAttr(std::ostream& strm, std::string_view name, _Tp scalar, int indent)
@@ -298,21 +298,20 @@ public:
     NodeData();
     NodeData(const std::string_view name, const Op& op,
          const std::vector<Arg>& inputs,
-         const std::vector<Arg>& outputs);
-    NodeData(std::string_view name, const Op& op,
-         const std::vector<Arg>& inputs,
          const std::vector<Arg>& outputs,
-         const std::vector<Graph>& subgraphs);
+         const std::vector<Graph>& subgraphs=std::vector<Graph>());
     ~NodeData();
+    Node clone(Net2* newnet=nullptr) const;
 
     void dump(const Net2& net, std::ostream& strm,
-              int indent, int maxsz_small=10) const;
+              int indent, size_t maxsz_small,
+              bool comma) const;
 
     std::string_view name() const;
     Op op() const;
-    std::vector<Arg>& inputs() const;
-    std::vector<Arg>& outputs() const;
-    std::vector<Graph>& subgraphs() const;
+    const std::vector<Arg>& inputs() const;
+    const std::vector<Arg>& outputs() const;
+    const std::vector<Graph>& subgraphs() const;
 
 protected:
     std::string name_;
@@ -327,7 +326,7 @@ struct CV_EXPORTS BaseOptimizedGraph
     virtual ~BaseOptimizedGraph();
     virtual GraphBackend* getBackend() const = 0;
     virtual void dump(const Net2& net, const Graph& g,
-                      std::ostream& strm, int indent, int maxsz_small=10) const;
+                      std::ostream& strm, int indent, size_t maxsz_small) const;
     virtual bool update(Net2& net, const Graph& g,
                         const std::vector<SizeType>& curr_inpst,
                         const std::vector<SizeType>& prev_inpst,
@@ -342,31 +341,38 @@ class CV_EXPORTS GraphData
 {
 public:
     GraphData();
-    GraphData(Net2& net_, std::string_view name_,
+    GraphData(Net2& net, std::string_view name,
           const std::vector<Arg>& inputs,
           const std::vector<Arg>& outputs,
-          bool ispattern_=false);
+          bool ispattern=false);
     ~GraphData();
     std::string_view name() const;
     bool empty() const;
     void clear();
     Graph clone(Net2* newnet=nullptr) const;
-    void append(const Op& op, const std::vector<Arg>& inputs, std::vector<Arg>& outputs);
-    Arg append(const Op& op, const std::vector<Arg>& inputs);
+    void append(std::string_view node_name, const Op& op,
+                const std::vector<Arg>& inputs,
+                const std::vector<std::string_view>& outnames,
+                std::vector<Arg>& outputs);
+    Arg append(std::string_view node_name, const Op& op,
+               const std::vector<Arg>& inputs,
+               std::string_view outname);
     bool isPattern() const;
-    void dump(std::ostream& strm, int indent);
+    void dump(std::ostream& strm, int indent, size_t maxsz_small, bool comma);
     void inferShapes(const std::vector<SizeType>& inpst,
                      std::vector<SizeType>& outst) const;
     Net2* net() const;
-    std::vector<Arg>& inputs() const;
-    std::vector<Arg>& outputs() const;
-    std::vector<Op>& prog() const;
+    const std::vector<Arg>& inputs() const;
+    const std::vector<Arg>& outputs() const;
+    const std::vector<Node>& prog() const;
 
 protected:
+    bool ispattern_;
     Net2* net_;
+    std::string_view name_;
     std::vector<Arg> inputs_;
     std::vector<Arg> outputs_;
-    std::vector<Op> prog_;
+    std::vector<Node> prog_;
     GraphBackend* backend_;
     OptimizedGraph optigraph_;
 };
@@ -420,9 +426,6 @@ public:
     ~Net2(); //!< Destructor frees the net only if there aren't references to the net anymore.
 
     void release();
-
-    bool preprocessWith(std::initializer_list<Op> ops);
-    bool postprocessWith(std::initializer_list<Op> ops);
     void forward(InputArrayOfArrays inputBlobs,
                  OutputArrayOfArrays outputBlobs);
     void getInputNames(std::vector<std::string>& inputs) const;
@@ -445,8 +448,8 @@ public:
     std::string_view argName(Arg arg) const;
     ArgKind argKind(Arg arg) const;
     Arg newArg(std::string_view name, ArgKind kind) const;
-    Arg newConstArg(std::string_view name, const Tensor& t) const;
-    Arg newTempArg(std::string_view name=std::string_view()) const;
+    Arg constArg(std::string_view name, const Tensor& t) const;
+    Arg tempArg(std::string_view name=std::string_view()) const;
     bool isConstArg(Arg idx) const;
     bool isTempArg(Arg idx) const;
     Tensor argTensor(Arg idx) const;
@@ -464,7 +467,8 @@ public:
     void setDumpStream(std::ostream* ostrm) const;
     std::ostream* getDumpStream() const;
     void dump(std::ostream* strm=nullptr) const;
-    void dumpArg(std::ostream& strm, Arg arg, int maxsz_small=10) const;
+    void dumpArg(std::ostream& strm, Arg arg, int indent, size_t maxsz_small=10, bool comma=true) const;
+    int deltaIndent() const;
 
     int onnxOpset() const;
 
@@ -476,7 +480,7 @@ private:
 
 struct CV_EXPORTS OnnxReaderParams
 {
-    int accuracy = -1;
+    int defaultWeightType = -1;
     std::string backendspec = std::string();
     std::ostream* errstrm = nullptr;
 };

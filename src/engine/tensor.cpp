@@ -666,8 +666,9 @@ static void dumpSlice(std::ostream& strm, const Tensor& t, const size_t* step, i
     int ndims = size.ndims;
     int64_t n = d >= ndims ? 1 : size.size[d];
     if (d >= ndims - 1) {
-        int typ = t.type();
+        int typ = t.depth();
         void* data = t.data();
+        n *= t.channels();
         if (typ == CV_8U)
             dumpRow(strm, (const uint8_t*)data, n, ofs, border);
         else if (typ == CV_8S)
@@ -721,7 +722,7 @@ static void dumpSlice(std::ostream& strm, const Tensor& t, const size_t* step, i
 }
 
 void Tensor::dump(std::ostream& strm, int indent, int border0,
-                  int maxsz_all, bool braces) const
+                  size_t maxsz_all, bool braces) const
 {
     Tensor temp;
     const Tensor* t = this;
@@ -730,28 +731,38 @@ void Tensor::dump(std::ostream& strm, int indent, int border0,
         t = &temp;
     }
     size_t sz_all = t->total();
+    if (braces)
+        strm << "[";
     if (sz_all == 0) {
-        strm << "no data";
+        if (!braces)
+            strm << "no data";
     } else {
         int ndims = size_.ndims;
-        int64_t border = sz_all < (size_t)maxsz_all ? 0 : border0;
+        int64_t border = sz_all < maxsz_all ? 0 : border0;
+        int cn = channels();
         size_t step[TensorSize::MAX_NDIMS];
         step[ndims-1] = 1;
-        for (int i = ndims-2; i >= 0; i--)
-            step[i] = step[i+1]*size_.size[i+1];
-        if (braces)
-            printf("[");
+        for (int i = ndims-2; i >= 0; i--) {
+            step[i] = step[i+1]*size_.size[i+1]*cn;
+            cn = 1;
+        }
+
         dumpSlice(strm, *t, step, 0, 0, border);
-        if (braces)
-            printf("]\n");
-        else
-            printf("\n");
     }
+    if (braces)
+        strm << "]";
 }
 
-void Tensor::dumpSmall(std::ostream& strm, int maxsz_small, bool braces) const
+void Tensor::dumpSmall(std::ostream& strm, size_t maxsz_small) const
 {
-    
+    SizeType({size_, type_}).dump(strm);
+    size_t nelems = total()*channels();
+    if (nelems <= maxsz_small) {
+        strm << ' ';
+        dump(strm, 0, 0, maxsz_small, true);
+    } else {
+        strm << " [...]";
+    }
 }
 
 }}

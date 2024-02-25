@@ -4,7 +4,7 @@
 - [ ] (postpone) download and compile libprotobuf-c and proto-c
 - [ ] (postpone) download fresh onnx.pb3, generate parser
 - [+/-] define the new API for model and graph construction out of operations
-- [ ] add functions to dump graphs
+- [+/-] add functions to dump graphs
 - [ ] create onnx parser, test it
 - [ ] add api for shape & type inference with block layout support
 - [+/-] add API for backends
