@@ -16,49 +16,56 @@ namespace dnn {
 //! @addtogroup dnn
 //! @{
 
-enum DataLayout2
+enum TensorLayout
 {
-    DNN2_LAYOUT_UNKNOWN = 0,
-    DNN2_LAYOUT_ND = 1,
-    DNN2_LAYOUT_NCHW = 2,
-    DNN2_LAYOUT_NHWC = 3,
-    DNN2_LAYOUT_NCHWc = 4
+    LAYOUT_UNKNOWN = 0,
+    LAYOUT_ND = 1,
+    LAYOUT_NCHW = 2,
+    LAYOUT_NHWC = 3,
+    LAYOUT_NCHWc = 4
 };
 
-struct CV_EXPORTS TensorShape
+struct CV_EXPORTS TensorSize
 {
-    TensorShape();
-    template<typename _Tp> TensorShape(int ndims, const _Tp* shape,
-                                        DataLayout2 layout=DNN2_LAYOUT_UNKNOWN);
-    template<typename _Tp> TensorShape(std::initializer_list<_Tp> shape,
-                                        DataLayout2 layout=DNN2_LAYOUT_UNKNOWN);
-    static TensorShape fromArray(InputArray m, DataLayout2 layout=DNN2_LAYOUT_UNKNOWN);
+    TensorSize();
+    TensorSize(int ndims, const int64_t* size,
+                TensorLayout layout=LAYOUT_UNKNOWN);
+    TensorSize(std::initializer_list<int64_t> size,
+                TensorLayout layout=LAYOUT_UNKNOWN);
+    static TensorSize fromArray(InputArray m, TensorLayout layout=LAYOUT_UNKNOWN);
     int toMatShape(int* mshape, int maxdims) const;
+    // convert to block layout; existing layout must be NCHW or NHWC
+    TensorSize toBlock(int64_t C0) const;
+    // convert from block layout.
+    // the new layout must be explicitly specified and be NCHW or NHWC
+    TensorSize fromBlock(TensorLayout newLayout) const;
     size_t total() const;
     bool empty() const;
-    bool equalTo(const TensorShape& another) const;
-    std::string str() const;
     void dump(std::ostream& strm) const;
     enum {MAX_TENSOR_DIMS=10};
-    DataLayout2 layout;
+    TensorLayout layout;
     int ndims;
     int64_t C;
-    int64_t shape[MAX_TENSOR_DIMS];
+    int64_t size[MAX_TENSOR_DIMS];
 };
 
-struct CV_EXPORTS ShapeNType
+// when both 'layout' and 'another.layout' are block layouts, we also check 'C == another.C'
+CV_EXPORTS bool operator == (const TensorSize& shape1, const TensorSize& shape2);
+CV_EXPORTS bool operator != (const TensorSize& shape1, const TensorSize& shape2);
+
+struct CV_EXPORTS SizeType
 {
-    TensorShape shape;
-    int type;
-    bool totalBytes() const;
-    ShapeNType toBlock(int64_t C0) const;
-    ShapeNType fromBlock(int64_t C) const;
+    TensorSize size;
+    int type = 0;
+    size_t totalBytes() const;
+    SizeType toBlock(int64_t C0) const;
+    SizeType fromBlock(TensorLayout layout) const;
 
     void dump(std::ostream& strm) const;
 };
 
-CV_EXPORTS bool operator == (const ShapeNType& st0, const ShapeNType& st1);
-CV_EXPORTS bool operator != (const ShapeNType& st0, const ShapeNType& st1);
+CV_EXPORTS bool operator == (const SizeType& st0, const SizeType& st1);
+CV_EXPORTS bool operator != (const SizeType& st0, const SizeType& st1);
 
 enum BufAccess { DNN_BUF_READONLY=1, DNN_BUF_WRITEONLY=2, DNN_BUF_RW=3 };
 
@@ -75,14 +82,15 @@ struct CV_EXPORTS Device
 {
     virtual ~Device();
     virtual DeviceType type() const = 0;
-    virtual std::string name() const = 0;
+    virtual bool isCPU() const;
+    virtual std::string_view name() const = 0;
     virtual bool supportType(int type) const = 0;
-    virtual bool zeroCopy() const = 0;
+    virtual bool supportZeroCopy() const = 0;
     virtual int ndevices() const = 0;
     virtual int index() const = 0;
-    virtual Device* sameKindDevice(int index) const = 0;
+    virtual Device* getSameKindDevice(int index) const = 0;
     virtual MemoryManager* defaultMemoryManager() = 0;
-    virtual bool sameDevice(const Device* device) const = 0;
+    virtual bool isSameDevice(Device* device) const = 0;
 };
 
 CV_EXPORTS Device* getCPUDevice();
@@ -91,115 +99,152 @@ struct CV_EXPORTS MemoryManager
 {
     virtual ~MemoryManager();
     virtual void* allocate(Device* device, size_t bufsize) = 0;
-    virtual void release(Device* device, void* handle) = 0;
+    virtual void deallocate(Device* device, void* handle) = 0;
     virtual void* map(Device* device, void* handle, size_t size, int access=DNN_BUF_RW) = 0;
     virtual void unmap(Device* device, void* handle, void* ptr, size_t size, int access=DNN_BUF_RW) = 0;
-    virtual void copyFromDevice(Device* device, void* handle, size_t offset, size_t size, void* dst) = 0;
+    virtual void copyFromDevice(Device* device, void* handle, size_t offset, void* dst, size_t size) = 0;
     virtual void copyToDevice(Device* device, const void* src, void* handle, size_t offset, size_t size) = 0;
-    virtual void fill(Device* device, void* handle, size_t offset, size_t size, const void* value, size_t vsize) = 0;
+    virtual void copyWithinDevice(Device* device, const void* srchandle, size_t srcoffset,
+                                  void* dsthandle, size_t dstoffset, size_t size) = 0;
+    virtual void fill(Device* device, void* handle, size_t offset, size_t nelems, const void* value, size_t vsize) = 0;
 };
 
-struct CV_EXPORTS Buffer
+CV_EXPORTS MemoryManager* getCPUMemoryManager();
+
+class BufferData;
+typedef std::shared_ptr<BufferData> Buffer;
+
+class CV_EXPORTS BufferData
 {
-    static constexpr size_t whole = (size_t)-1;
-    struct Shared
-    {
-        Shared();
-        void* ptr;
-        int refcount;
-        int mapcount;
-    };
-    Buffer();
-    Buffer(const Buffer& buf);
-    Buffer(const void* data, size_t size, bool copy);
-    Buffer& operator = (const Buffer& buf);
-    ~Buffer();
+public:
+    BufferData();
+    ~BufferData();
 
     static Buffer allocate(size_t size, Device* device=nullptr, MemoryManager* mm=nullptr);
+    Buffer allocateOnSameDevice(size_t size) const;
     void fit(size_t size);
-    void set(const void* data, size_t size, bool copy);
     void release();
     void* map(BufAccess access=DNN_BUF_RW);
     void unmap(BufAccess access=DNN_BUF_RW);
 
-    Device* device;
-    MemoryManager* mm;
-    Shared* shared;
-    void* handle;
-    size_t size;
+    Device* device() const;
+    MemoryManager* memoryManager() const;
+    void* handle() const;
+    void* hostPtr() const;
+    size_t size() const;
+
+protected:
+    Device* device_;
+    MemoryManager* mm_;
+    void* handle_;
+    size_t size_;
+    void* host_ptr_;
+    int mapcount_;
 };
 
-// temporary solution while Mat cannot be 0-D or 1-D array.
-struct CV_EXPORTS Tensor
+// temporary alternative to the UMat (which is to be refactored)
+class CV_EXPORTS Tensor
 {
+public:
     Tensor();
     Tensor(const Tensor& t);
     Tensor& operator = (const Tensor& t);
     ~Tensor();
 
-    explicit Tensor(const ShapeNType& st, Device* device=nullptr);
-    explicit Tensor(const ShapeNType& st, void* data, bool copy, Device* device=nullptr);
-    explicit Tensor(const ShapeNType& st, Buffer& buffer, size_t slice_start=0);
-    explicit Tensor(const ShapeNType& st, void* data, Buffer& buffer, size_t slice_start=0);
-    explicit Tensor(InputArray arr, bool copy, Device* device=nullptr);
-    explicit Tensor(InputArray arr, Buffer& buffer, size_t slice_start=0);
-    explicit Tensor(Buffer& buffer, size_t slice_size=Buffer::whole, size_t slice_start=0);
+    explicit Tensor(const TensorSize& size, int type, Device* device=nullptr);
+    explicit Tensor(const TensorSize& size, int type, void* data, bool copy, Device* device=nullptr);
+    explicit Tensor(const Buffer& buffer);
+    explicit Tensor(const Buffer& buffer, size_t start, size_t maxsize);
+    explicit Tensor(InputArray arr, TensorLayout layout, bool copy, Device* device=nullptr);
 
-    static void multiFit(Buffer& buffer,
-                        std::initializer_list<ShapeNType> st,
-                        std::initializer_list<Tensor*> tensors);
-    static Tensor makeScalar(double value, int type, Device* device=nullptr);
-    static Tensor makeScalar(int64 value, int type, Device* device=nullptr);
+    static void multiFit(const Buffer& buffer,
+                        std::initializer_list<SizeType> st,
+                        std::initializer_list<Tensor*> tensors,
+                        size_t alignment=32);
+    static Tensor makeScalar(int type, const void* value, Device* device=nullptr);
+    template<typename _Tp> static Tensor makeScalar(_Tp value, Device* device=nullptr)
+    {
+        return makeScalar(DataType<_Tp>::type, &value, device);
+    }
     bool isScalar() const;
     bool getScalar(int type, void* scalar) const;
     template<typename _Tp> _Tp getScalar() const {
         _Tp value = 0;
-        bool ok = getScalar(DataType<_Tp>::depth, &value);
+        bool ok = getScalar(DataType<_Tp>::type, &value);
         return ok ? value : _Tp();
     }
 
     void release();
-    void fit(const ShapeNType& st);
-    void fit(const ShapeNType& st, Buffer& buffer, size_t slice_start=0);
-    void fitSameDevice(const Tensor& tensor, const ShapeNType& shapetyp);
-    bool onSameDevice(const Tensor& tensor);
-    void set(const ShapeNType& st, void* data, bool copy);
-    void set(InputArray arr, bool copy);
-    void set(Buffer& buffer, size_t slice_start=0);
+    void fit(const TensorSize& size, int type);
+    void fitSameDevice(const Tensor& tensor, const TensorSize& size, int type);
+    bool isOnSameDevice(const Tensor& tensor);
+    void setData(const TensorSize& size, int type, void* data, bool copy, Device* device);
+    void setData(InputArray arr, TensorLayout layout, bool copy, Device* device);
+    void setBuffer(const Buffer& buffer);
+    void setBufferSlice(const Buffer& buffer, size_t start, size_t maxsize);
+    Buffer buffer() const;
+
+    bool isContinuous() const;
+    bool usesBufferSlice() const;
 
     Device* device() const;
+    MemoryManager* memoryManager() const;
     DeviceType deviceType() const;
     size_t total() const;
+    size_t totalBytes() const;
     size_t elementSize() const;
     bool empty() const;
+    // return pointer in device memory. When tensor is on the host, handle() == data().
+    void* handle() const;
+    // return pointer in the host memory. When tensor is not on the host, exception is thrown.
     void* data() const;
+    template<typename _Tp> _Tp* ptr() const { return (_Tp*)data(); }
+    int dims() const;
+    TensorSize size() const;
+    SizeType sizetype() const;
+    TensorLayout layout() const;
+    int type() const;
+    int depth() const;
+    int channels() const;
+
     Mat getMat() const;
-    Mat download() const;
+    Tensor download() const;
     Tensor upload(Device* device) const;
     Tensor uploadToSameDevice(const Tensor& t) const;
     void copyTo(Tensor& tensor) const;
-    void setTo(double scalar);
-    void* map(int access=DNN_BUF_RW);
-    void unmap(int access=DNN_BUF_RW);
+    void setTo(int type, const void* value);
+    template<typename _Tp> void setTo(_Tp value) {
+        setTo(DataType<_Tp>::type, &value);
+    }
+    void* map(BufAccess access=DNN_BUF_RW);
+    void unmap(BufAccess access=DNN_BUF_RW);
 
     void dump(std::ostream& strm, int indent, int context=3,
               int maxsz_all=100, bool braces=true) const;
     void dumpSmall(std::ostream& strm, int maxsz_small=10, bool braces=true) const;
 
-    int flags;
-    ShapeNType st;
-    Buffer buf;
-    size_t slice_size;
-    size_t slice_start;
+protected:
+    enum { CONTINUOUS_FLAG=1, BUFFER_SLICE_FLAG=2 };
+    void init();
+
+    int flags_;
+    int type_;
+    TensorSize size_;
+    Buffer buf_;
+    void* ext_data_;
+    size_t slice_start_;
+    size_t slice_maxsize_;
 };
 
 class Net2;
-struct Node;
-struct Graph;
-typedef Ptr<Graph> PGraph;
-typedef Ptr<Node> PNode;
-struct BaseBackend;
-typedef Ptr<BaseBackend> PBackend;
+struct NodeData;
+struct GraphData;
+struct GraphBackend;
+struct BaseOp;
+
+typedef std::shared_ptr<BaseOp> Op;
+typedef std::shared_ptr<NodeData> Node;
+typedef std::shared_ptr<GraphData> Graph;
 
 struct CV_EXPORTS Arg
 {
@@ -217,12 +262,12 @@ public:
     virtual std::string_view name() const;
     virtual void dump(std::ostream& strm, int indent, int maxsz_small=10) const;
     static void dumpTensorAttr(std::ostream& strm, std::string_view name, const Tensor& t, int indent);
-    static void dumpScalarAttr_(std::ostream& strm, std::string_view name, int type, const void* scalar, int indent);
+    static void dumpScalarAttr(std::ostream& strm, std::string_view name, int type, const void* scalar, int indent);
     template<typename _Tp> static void dumpScalarAttr(std::ostream& strm, std::string_view name, _Tp scalar, int indent)
-    { dumpScalarAttr_(strm, name, DataType<_Tp>::depth, &scalar, indent); }
+    { dumpScalarAttr(strm, name, DataType<_Tp>::type, &scalar, indent); }
     static void dumpStringAttr(std::ostream& strm, std::string_view name, std::string_view value, int indent);
 
-    virtual void clone() const;
+    virtual Op clone() const = 0;
     virtual int minNumInputs() const;
     virtual int maxNumInputs() const;
     virtual int minNumOutputs() const;
@@ -231,15 +276,15 @@ public:
     virtual bool supportType(int input, int depth) const;
     virtual bool supportInplace(const Net2& net, const Graph& graph,
                                 const std::vector<Arg>& inpargs,
-                                const std::vector<ShapeNType>& inpst) const;
+                                const std::vector<SizeType>& inpst) const;
 
-    virtual int64 getFLOPS(const std::vector<ShapeNType> &inputs,
-                           const std::vector<ShapeNType> &outputs) const;
+    virtual int64 getFLOPS(const std::vector<SizeType> &inputs,
+                           const std::vector<SizeType> &outputs) const;
     virtual void inferShapes(const Net2& net, const Graph& graph,
                             const std::vector<Arg>& inpargs,
-                            const std::vector<ShapeNType>& inpst,
+                            const std::vector<SizeType>& inpst,
                             const std::vector<Arg>& outargs,
-                            std::vector<ShapeNType>& outst,
+                            std::vector<SizeType>& outst,
                             std::vector<size_t>& tempbufs) const;
     virtual void forward(Net2& net, Graph& graph,
                         const std::vector<Tensor>& inputs,
@@ -247,81 +292,102 @@ public:
                         std::vector<Buffer>& tempbufs);
 };
 
-typedef Ptr<BaseOp> Op;
-
-struct CV_EXPORTS Node
+class CV_EXPORTS NodeData
 {
+public:
+    NodeData();
+    NodeData(const std::string_view name, const Op& op,
+         const std::vector<Arg>& inputs,
+         const std::vector<Arg>& outputs);
+    NodeData(std::string_view name, const Op& op,
+         const std::vector<Arg>& inputs,
+         const std::vector<Arg>& outputs,
+         const std::vector<Graph>& subgraphs);
+    ~NodeData();
+
     void dump(const Net2& net, std::ostream& strm,
               int indent, int maxsz_small=10) const;
 
-    std::string name;
-    Op op;
-    std::vector<Arg> inputs;
-    std::vector<Arg> outputs;
-    std::vector<PGraph> graph;
+    std::string_view name() const;
+    Op op() const;
+    std::vector<Arg>& inputs() const;
+    std::vector<Arg>& outputs() const;
+    std::vector<Graph>& subgraphs() const;
+
+protected:
+    std::string name_;
+    Op op_;
+    std::vector<Arg> inputs_;
+    std::vector<Arg> outputs_;
+    std::vector<Graph> subgraphs_;
 };
 
-struct CV_EXPORTS OptimizedGraph
+struct CV_EXPORTS BaseOptimizedGraph
 {
-    virtual ~OptimizedGraph();
-    virtual Backend* getBackend() const = 0;
-    virtual void dump(const Net2& net, const PGraph& g,
+    virtual ~BaseOptimizedGraph();
+    virtual GraphBackend* getBackend() const = 0;
+    virtual void dump(const Net2& net, const Graph& g,
                       std::ostream& strm, int indent, int maxsz_small=10) const;
-    virtual bool update(Net2& net, const PGraph& g,
-                        const std::vector<ShapeNType>& curr_inpst,
-                        const std::vector<ShapeNType>& prev_inpst,
+    virtual bool update(Net2& net, const Graph& g,
+                        const std::vector<SizeType>& curr_inpst,
+                        const std::vector<SizeType>& prev_inpst,
                         std::vector<Buffer>& tempbufs) const;
-    virtual bool forward(Net2& net, const PGraph& graph, std::vector<Tensor>& inputs,
+    virtual bool forward(Net2& net, const Graph& graph, std::vector<Tensor>& inputs,
                         std::vector<Tensor>& outputs, std::vector<Buffer>& tempbufs) = 0;
 };
 
-typedef Ptr<OptimizedGraph> POptiGraph;
+typedef std::shared_ptr<BaseOptimizedGraph> OptimizedGraph;
 
-struct CV_EXPORTS Graph
+class CV_EXPORTS GraphData
 {
-    Graph();
-    Graph(Net2& net_, std::string_view name_, bool ispattern_=false);
+public:
+    GraphData();
+    GraphData(Net2& net_, std::string_view name_,
+          const std::vector<Arg>& inputs,
+          const std::vector<Arg>& outputs,
+          bool ispattern_=false);
+    ~GraphData();
+    std::string_view name() const;
     bool empty() const;
     void clear();
-    PGraph clone(Net2* newnet=nullptr) const;
-    void newop(const Op& op, const std::vector<Arg>& inputs, std::vector<Arg>& outputs);
-    Arg newop(const Op& op, const std::vector<Arg>& inputs);
+    Graph clone(Net2* newnet=nullptr) const;
+    void append(const Op& op, const std::vector<Arg>& inputs, std::vector<Arg>& outputs);
+    Arg append(const Op& op, const std::vector<Arg>& inputs);
     bool isPattern() const;
     void dump(std::ostream& strm, int indent);
-    void inferShapes(const std::vector<ShapeNType>& inpst,
-                    std::vector<ShapeNType>& outst) const;
+    void inferShapes(const std::vector<SizeType>& inpst,
+                     std::vector<SizeType>& outst) const;
+    Net2* net() const;
+    std::vector<Arg>& inputs() const;
+    std::vector<Arg>& outputs() const;
+    std::vector<Op>& prog() const;
 
-    std::vector<Arg> inputs;
-    std::vector<Arg> outputs;
-    std::vector<PNode> prog;
-
-    std::vector<ShapeNType> prev_inpst;
-
-    Net2* net;
-    PBackend backend;
-    POptiGraph optimized;
-
-    std::string name;
-    bool ispattern;
+protected:
+    Net2* net_;
+    std::vector<Arg> inputs_;
+    std::vector<Arg> outputs_;
+    std::vector<Op> prog_;
+    GraphBackend* backend_;
+    OptimizedGraph optigraph_;
 };
 
-struct CV_EXPORTS BaseBackend
+struct CV_EXPORTS GraphBackend
 {
-    virtual ~BaseBackend();
+    virtual ~GraphBackend();
     virtual Device* device() const = 0;
     virtual std::string_view name() const = 0;
     virtual bool supportType(int type) const = 0;
     virtual int64_t preferredBlockSize(int type) const = 0;
-    virtual bool supportOp(const Op& op, const std::vector<ShapeNType>& inpst) const = 0;
-    virtual PGraph preprocessGraph(Net2& net, const PGraph& graph,
-                        const std::vector<ShapeNType>& inpst,
+    virtual bool supportOp(const Op& op, const std::vector<SizeType>& inpst) const = 0;
+    virtual Graph preprocessGraph(Net2& net, const Graph& graph,
+                        const std::vector<SizeType>& inpst,
                         std::vector<Buffer>& tempbufs) = 0;
-    virtual bool forward(Net2& net, const PGraph& graph, std::vector<Tensor>& inputs,
+    virtual bool forward(Net2& net, const Graph& graph, std::vector<Tensor>& inputs,
                         std::vector<Tensor>& outputs, std::vector<Buffer>& tempbufs) = 0;
 };
 
-CV_EXPORTS PBackend getCPUBackend();
-CV_EXPORTS PBackend getBackendFromSpec(std::string_view backendSpec);
+CV_EXPORTS GraphBackend* getCPUBackend();
+CV_EXPORTS GraphBackend* getBackendFromSpec(std::string_view backendSpec);
 
 enum ArgKind { DNN_ARG_CONST=0, DNN_ARG_INPUT=1, DNN_ARG_OUTPUT=2, DNN_ARG_TEMP=3 };
 
@@ -330,7 +396,7 @@ struct CV_EXPORTS ArgInfo
     ArgInfo();
     std::string name;
     ArgKind kind;
-    ShapeNType st;
+    SizeType st;
 };
 
 enum TracingMode
@@ -353,6 +419,8 @@ public:
     Net2();  //!< Default constructor.
     ~Net2(); //!< Destructor frees the net only if there aren't references to the net anymore.
 
+    void release();
+
     bool preprocessWith(std::initializer_list<Op> ops);
     bool postprocessWith(std::initializer_list<Op> ops);
     void forward(InputArrayOfArrays inputBlobs,
@@ -365,40 +433,40 @@ public:
     void setProfilingMode(ProfilingMode mode);
     void getProfile(std::vector<std::string>& opnames, std::vector<double>& times) const;
     ProfilingMode getProfilingMode() const;
-    PGraph newGraph(std::string_view name=std::string_view()) const;
-    PGraph newPattern() const;
-    PGraph getMainGraph() const;
-    bool setAccuracy(int type); // typically, CV_16F can be used to explicitly
-                                // enable FP16 on backends that support both FP16 and FP32
+    Graph newGraph(std::string_view name=std::string_view()) const;
+    Graph newPattern() const;
+    Graph getMainGraph() const;
+    bool setAccuracy(int type); // typically, CV_16F/CV_16BF can be used to explicitly
+                                // enable FP16/BF16 on backends that support both FP16/BF16 and FP32
     int getAccuracy() const;
     void checkArgs(const std::vector<Arg>& args) const;
     void checkArg(Arg arg) const;
     ArgInfo argInfo(Arg arg) const;
-    Arg newArg(const ArgInfo& info) const;
+    std::string_view argName(Arg arg) const;
+    ArgKind argKind(Arg arg) const;
+    Arg newArg(std::string_view name, ArgKind kind) const;
     Arg newConstArg(std::string_view name, const Tensor& t) const;
     Arg newTempArg(std::string_view name=std::string_view()) const;
     bool isConstArg(Arg idx) const;
     bool isTempArg(Arg idx) const;
     Tensor argTensor(Arg idx) const;
 
-    int onnxOpset() const;
-
     bool useBackend(std::string_view backendSpec); // CUDA:1, iGPU, NPU:0, ...
-    bool useBackend(const PBackend& backend); // the latest added backend gets the highest priority
-    void getBackends(std::vector<PBackend>& backends); // highest-priority to the lowest-priority
+    bool useBackend(GraphBackend* backend); // the latest added backend gets the highest priority
+    bool removeBackend(GraphBackend* backend);
     size_t getNumUsedBackends() const;
-    PBackend getBackend(size_t i) const; // 0 - highest-priority backend, ...
+    GraphBackend* getBackend(size_t i) const; // 0 - highest-priority backend, ...
 
     Net2 clone() const;
     bool empty() const;
 
+    // set default stream for dumping and tracing
     void setDumpStream(std::ostream* ostrm) const;
     std::ostream* getDumpStream() const;
     void dump(std::ostream* strm=nullptr) const;
     void dumpArg(std::ostream& strm, Arg arg, int maxsz_small=10) const;
 
-    void setDumpIndent(int);
-    int getDumpIndent() const;
+    int onnxOpset() const;
 
     struct Impl;
     Ptr<Impl> impl() const;

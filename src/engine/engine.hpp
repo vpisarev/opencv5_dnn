@@ -54,9 +54,9 @@ struct Net2::Impl
 
     void clear();
     void forward(InputArrayOfArrays inputBlobs, OutputArrayOfArrays outputBlobs);
-    void forwardGraph(const PGraph& graph);
+    void forwardGraph(const Graph& graph);
     void useCounts(std::vector<int>& usecounts) const;
-    void updateUseCounts(std::vector<int>& usecounts, const PGraph& graph) const;
+    void updateUseCounts(std::vector<int>& usecounts, const Graph& graph) const;
 
     Arg addConstTensor(const std::string& name, const Tensor& t, int idx=-1);
     Arg addArg(ArgKind argkind, const ArgInfo& arginfo);
@@ -89,8 +89,8 @@ struct Net2::Impl
     std::vector<Tensor> tensors;
     std::vector<int> bufidxs;
     std::vector<Buffer> buffers;
-    PGraph graph;
-    DataLayout2 defaultLayout;
+    Graph graph;
+    TensorLayout defaultLayout;
     bool enableFP16;
     bool haveFP16;
     bool trace;

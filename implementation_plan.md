@@ -7,7 +7,7 @@
 - [ ] add functions to dump graphs
 - [ ] create onnx parser, test it
 - [ ] add api for shape & type inference with block layout support
-- [ ] add API for backends
+- [+/-] add API for backends
 - [ ] implement api for shape & type inference for a few basic ops, test it
 - [ ] implement constant folding
 - [ ] implement buffer assigner
@@ -22,6 +22,8 @@
     - [ ] conv + activation
     - [ ] matmul [+ bias] + activation
     - [ ] conv + batchnorm
+    - [ ] layernorm
+    - [ ] gelu
     - [ ] ...
 - [ ] add tokenizer
 - [ ] add postprocessing for llama

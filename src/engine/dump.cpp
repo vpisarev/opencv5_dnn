@@ -7,7 +7,7 @@
 #include <ostream>
 
 namespace cv { namespace dnn {
-
+#if 0
 using std::vector;
 using std::string;
 using std::ostream;
@@ -332,5 +332,6 @@ void dump(InputArray m, int ndims, int border, int maxsz_all, bool braces)
     Tensor t(m, ndims, false);
     dump(t, border, maxsz_all, braces);
 }
+#endif
 
 }}

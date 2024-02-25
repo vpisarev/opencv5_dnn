@@ -24,6 +24,7 @@
 namespace cv {
 namespace dnn {
 
+#if 0
 using std::vector;
 using std::string;
 
@@ -1554,5 +1555,7 @@ Net2 readNetFromONNX2(std::string_view onnxFile)
     net.impl()->assignBuffers();
     return net;
 }
+
+#endif
 
 }} // namespace
