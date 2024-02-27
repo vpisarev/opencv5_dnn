@@ -305,12 +305,34 @@ Tensor::Tensor(InputArray arr, TensorLayout layout, bool copy, Device* device)
     setData(arr, layout, copy, device);
 }
 
-void Tensor::multiFit(const Buffer& buffer,
-                      std::initializer_list<SizeType> st,
+void Tensor::multiFit(Buffer& buffer,
+                      std::initializer_list<SizeType> st_list,
                       std::initializer_list<Tensor*> tensors,
                       size_t alignment)
 {
-
+    alignment = alignment > 0 ? alignment : 32;
+    CV_Assert(buffer);
+    CV_Assert((alignment & (alignment - 1)) == 0);
+    CV_Assert(st_list.size() == tensors.size());
+    size_t offset = 0, size = 0;
+    for (auto st: st_list) {
+        size_t nbytes = st.totalBytes();
+        nbytes = (nbytes + alignment-1) & (~alignment + 1);
+        size += nbytes;
+    }
+    buffer->fit(size);
+    auto st_it = st_list.begin();
+    auto t_it = tensors.begin();
+    size_t i, ntensors = tensors.size();
+    for (i = 0; i < ntensors; i++, ++st_it, ++t_it) {
+        SizeType st = *st_it;
+        Tensor* t = *t_it;
+        CV_Assert(t != nullptr);
+        size_t nbytes = st.totalBytes();
+        nbytes = (nbytes + alignment-1) & (~alignment + 1);
+        t->setBufferSlice(buffer, offset, offset + nbytes);
+        offset += nbytes;
+    }
 }
 
 Tensor Tensor::makeScalar(int type, const void* value, Device* device)
@@ -427,9 +449,9 @@ Buffer Tensor::buffer() const {
 bool Tensor::isContinuous() const { return (flags_ & CONTINUOUS_FLAG) != 0; }
 bool Tensor::usesBufferSlice() const { return (flags_ & BUFFER_SLICE_FLAG) != 0; }
 
-Device* Tensor::device() const { return buf_ ? buf_->device() : getCPUDevice(); }
+Device* Tensor::device() const { return buf_ ? buf_->device() : Device::CPU(); }
 DeviceType Tensor::deviceType() const { return device()->type(); }
-MemoryManager* Tensor::memoryManager() const { return buf_ ? buf_->memoryManager() : getCPUMemoryManager(); }
+MemoryManager* Tensor::memoryManager() const { return buf_ ? buf_->memoryManager() : MemoryManager::forCPU(); }
 size_t Tensor::total() const { return size_.total(); }
 size_t Tensor::totalBytes() const { return size_.total()*elementSize(); }
 size_t Tensor::elementSize() const { return CV_ELEM_SIZE(type_); }
@@ -721,9 +743,11 @@ static void dumpSlice(std::ostream& strm, const Tensor& t, const size_t* step, i
     }
 }
 
-void Tensor::dump(std::ostream& strm, int indent, int border0,
-                  size_t maxsz_all, bool braces) const
+void Tensor::dump(std::ostream& strm, int indent, int border0_,
+                  size_t maxsz_all_, bool braces) const
 {
+    int border0 = border0_ > 0 ? border0_ : 3;
+    size_t maxsz_all = maxsz_all_ > 0 ? maxsz_all_ : 100;
     Tensor temp;
     const Tensor* t = this;
     if (deviceType() != Device_CPU) {
@@ -751,18 +775,6 @@ void Tensor::dump(std::ostream& strm, int indent, int border0,
     }
     if (braces)
         strm << "]";
-}
-
-void Tensor::dumpSmall(std::ostream& strm, size_t maxsz_small) const
-{
-    SizeType({size_, type_}).dump(strm);
-    size_t nelems = total()*channels();
-    if (nelems <= maxsz_small) {
-        strm << ' ';
-        dump(strm, 0, 0, maxsz_small, true);
-    } else {
-        strm << " [...]";
-    }
 }
 
 }}

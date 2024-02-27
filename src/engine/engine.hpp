@@ -39,48 +39,34 @@ struct OnnxInfo
     std::vector<OnnxOpSet> opsets;
 };
 
-enum {
-    DNN_MODEL_GENERIC = 0,
-    DNN_MODEL_ONNX = 1,
-    DNN_MODEL_TF = 2
-};
-
 typedef std::unordered_map<std::string, int> NamesHash;
+typedef std::unordered_map<std::string, double> profile;
 
 struct Net2::Impl
 {
-    Impl();
+    Impl(Net2* net_);
     ~Impl();
 
     void clear();
-    void forward(InputArrayOfArrays inputBlobs, OutputArrayOfArrays outputBlobs);
+    void initArgs();
     void forwardGraph(const Graph& graph);
     void useCounts(std::vector<int>& usecounts) const;
     void updateUseCounts(std::vector<int>& usecounts, const Graph& graph) const;
 
-    Arg addConstTensor(const std::string& name, const Tensor& t, int idx=-1);
-    Arg addArg(ArgKind argkind, const ArgInfo& arginfo);
-    int64_t findDim(const std::string& dimname);
-    Arg findArg(const std::string& argname);
-    Arg findOutputArg(const std::string& argname);
-    bool isConst(Arg arg) const;
-    int kind(Arg arg) const;
-    bool empty() const;
-    bool useFP16() const;
-    void set(int propId, double value);
-    double get(int propId) const;
-    void getTensors(const int* firstarg, size_t nargs, std::vector<Mat>& inputs) const;
+    void initProfile();
+    void updateProfile(const Op& op);
 
-    //template<typename _LayerType> bool isOp(const Node* node) const
-    //{ return node && dynamic_cast<_LayerType>(*node->op.get()) != 0; }
+    void checkArgs(const std::vector<Arg>& args) const;
+    void checkArg(Arg arg) const;
 
     void assignBuffers();
     void fuse();
     void foldConstSubexpr();
 
     Net2* net;
-    int modelFormat;
+    ModelFormat modelFormat;
     OnnxInfo onnxInfo;
+    int onnx_opset;
 
     NamesHash argnames;
     NamesHash dimnames;
@@ -89,21 +75,33 @@ struct Net2::Impl
     std::vector<Tensor> tensors;
     std::vector<int> bufidxs;
     std::vector<Buffer> buffers;
-    Graph graph;
+    std::vector<ArgInfo> pattern_args;
+    std::vector<Tensor> pattern_tensors;
+    Graph mainGraph;
+
+    NamesHash profileEntries;
+    std::vector<double> profileTimes;
+    std::vector<std::string> profileNames;
+    std::vector<int> profileRuns;
+
     TensorLayout defaultLayout;
     bool enableFP16;
     bool haveFP16;
-    bool trace;
-    bool profile;
-    bool traceProfile;
+    TracingMode tracingMode;
+    ProfilingMode profilingMode;
+    int accuracy;
 
     Buffer scratchBuf;
     std::vector<int64_t> perfProfileTime;
     std::vector<int> perfProfileCount;
-    std::string delta_indent = "   ";
 
     Device* defaultDevice;
     MemoryManager* defaultMemoryManager;
+    std::vector<GraphBackend*> backends;
+    std::vector<std::vector<Buffer> > backendBufs;
+
+    std::ostream* strm;
+    int dump_indent;
 };
 
 }}

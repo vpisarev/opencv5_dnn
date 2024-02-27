@@ -18,7 +18,7 @@
 - [ ] run resnet-50
 - [ ] add postprocessing for yolo
 - [ ] run yolo
-- [ ] add graph optimization based on pattern matching
+- [ ] add graph fusion/optimizations based on pattern matching
     - [ ] conv + activation
     - [ ] matmul [+ bias] + activation
     - [ ] conv + batchnorm

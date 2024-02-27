@@ -115,19 +115,24 @@ public:
     enum { MAX_PARAMS=10 };
     typedef void (*forward_t)(size_t ninputs, const void** inputs,
                               void* output, size_t len, const float* params);
+    static Op create(ElemwiseOpcode opcode, const float* params=nullptr, size_t nparams=0);
     virtual ~ElemwiseOp();
     virtual ElemwiseOpcode elemwiseOpcode() const;
 
     virtual forward_t getForwardSlice(int type) const;
-    float param[MAX_PARAMS];
+    ElemwiseOpcode opcode;
+    float params[MAX_PARAMS];
 };
 
 CV_EXPORTS Arg elemwise(Graph& graph, std::string_view opname, std::string_view outname,
-                        ElemwiseOpcode opcode, Arg input);
+                        ElemwiseOpcode opcode, Arg input,
+                        const float* params=nullptr, size_t nparams=0);
 CV_EXPORTS Arg elemwise(Graph& graph, std::string_view opname, std::string_view outname,
-                        ElemwiseOpcode opcode, Arg input0, Arg input1);
+                        ElemwiseOpcode opcode, Arg input0, Arg input1,
+                        const float* params=nullptr, size_t nparams=0);
 CV_EXPORTS Arg elemwise(Graph& graph, std::string_view opname, std::string_view outname,
-                        ElemwiseOpcode opcode, const std::vector<Arg>& inputs);
+                        ElemwiseOpcode opcode, const std::vector<Arg>& inputs,
+                        const float* params=nullptr, size_t nparams=0);
 
 CV_EXPORTS Arg add(Graph& graph, std::string_view opname,
                    std::string_view outname, Arg input0, Arg input1);
@@ -242,8 +247,12 @@ CV_EXPORTS Arg tanh(Graph& graph, std::string_view opname,
 struct CV_EXPORTS ReduceOp : public BaseOp
 {
 public:
+    static Op create(ReduceOpcode opcode, bool keepdims=true, bool noOpWithEmptyAxes=false);
     virtual ~ReduceOp();
     virtual ReduceOpcode reduceOpcode() const;
+    ReduceOpcode opcode;
+    bool keepdims;
+    bool noOpWithEmptyAxes;
 };
 
 
@@ -764,7 +773,6 @@ struct CV_EXPORTS SliceOp : public BaseOp
 
 CV_EXPORTS Arg slice(Graph& graph, std::string_view opname, std::string_view outname,
                      Arg input, int start=0, int end=INT_MAX);
-
 
 /*
     SoftMax

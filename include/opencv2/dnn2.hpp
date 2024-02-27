@@ -80,6 +80,7 @@ enum DeviceType {
 
 struct CV_EXPORTS Device
 {
+    static Device* CPU();
     virtual ~Device();
     virtual DeviceType type() const = 0;
     virtual bool isCPU() const;
@@ -93,10 +94,9 @@ struct CV_EXPORTS Device
     virtual bool isSameDevice(Device* device) const = 0;
 };
 
-CV_EXPORTS Device* getCPUDevice();
-
 struct CV_EXPORTS MemoryManager
 {
+    static MemoryManager* forCPU();
     virtual ~MemoryManager();
     virtual void* allocate(Device* device, size_t bufsize) = 0;
     virtual void deallocate(Device* device, void* handle) = 0;
@@ -108,8 +108,6 @@ struct CV_EXPORTS MemoryManager
                                   void* dsthandle, size_t dstoffset, size_t size) = 0;
     virtual void fill(Device* device, void* handle, size_t offset, size_t nelems, const void* value, size_t vsize) = 0;
 };
-
-CV_EXPORTS MemoryManager* getCPUMemoryManager();
 
 class BufferData;
 typedef std::shared_ptr<BufferData> Buffer;
@@ -157,7 +155,7 @@ public:
     explicit Tensor(const Buffer& buffer, size_t start, size_t maxsize);
     explicit Tensor(InputArray arr, TensorLayout layout, bool copy, Device* device=nullptr);
 
-    static void multiFit(const Buffer& buffer,
+    static void multiFit(Buffer& buffer,
                         std::initializer_list<SizeType> st,
                         std::initializer_list<Tensor*> tensors,
                         size_t alignment=32);
@@ -219,9 +217,8 @@ public:
     void* map(BufAccess access=DNN_BUF_RW);
     void unmap(BufAccess access=DNN_BUF_RW);
 
-    void dump(std::ostream& strm, int indent, int context=3,
-              size_t maxsz_all=100, bool braces=true) const;
-    void dumpSmall(std::ostream& strm, size_t maxsz_small) const;
+    void dump(std::ostream& strm, int indent, int context=0,
+              size_t maxsz_all=0, bool braces=true) const;
 
 protected:
     enum { CONTINUOUS_FLAG=1, BUFFER_SLICE_FLAG=2 };
@@ -248,30 +245,54 @@ typedef std::shared_ptr<GraphData> Graph;
 
 struct CV_EXPORTS Arg
 {
-    Arg();
-    explicit Arg(int idx);
-    bool isPattern() const;
+    Arg() : idx(0) {};
+    explicit Arg(int idx_) : idx(idx_) {};
+    bool empty() const { return idx == 0; }
+    bool isPattern() const { return idx < 0; }
+    // idx > 0: the Arg is input or output argument of some operation inside inference graph
+    // idx < 0: the Arg is input or output argument of a pattern
+    // idx == 0: no/empty argument; used in operations where some of the inputs/outputs are optional.
     int idx;
 };
+
+enum ArgKind { DNN_ARG_EMPTY=0, DNN_ARG_CONST, DNN_ARG_INPUT, DNN_ARG_OUTPUT, DNN_ARG_TEMP, DNN_ARG_PATTERN };
+
+struct CV_EXPORTS ArgInfo
+{
+    ArgInfo();
+    std::string name;
+    ArgKind kind;
+    TensorSize size;
+    int type;
+};
+
 
 struct CV_EXPORTS BaseOp
 {
 public:
     virtual ~BaseOp();
-    virtual std::string_view origname() const;
     virtual std::string_view name() const;
-    virtual void dumpAttrs(std::ostream& strm, int indent, size_t maxsz_small) const;
-    static void dumpTensorAttr(std::ostream& strm, std::string_view name, const Tensor& t, int indent);
-    static void dumpScalarAttr(std::ostream& strm, std::string_view name, int type, const void* scalar, int indent);
-    template<typename _Tp> static void dumpScalarAttr(std::ostream& strm, std::string_view name, _Tp scalar, int indent)
+    virtual std::string_view origName() const;
+    virtual std::string_view profileName() const;
+    virtual void dumpAttrs(std::ostream& strm, int indent) const;
+    static void dumpTensorAttr(std::ostream& strm, std::string_view name,
+                               const Tensor& t, int indent);
+    static void dumpScalarAttr(std::ostream& strm, std::string_view name,
+                               int type, const void* scalar, int indent);
+    template<typename _Tp> static void dumpScalarAttr(std::ostream& strm,
+                                                      std::string_view name, _Tp scalar, int indent)
     { dumpScalarAttr(strm, name, DataType<_Tp>::type, &scalar, indent); }
-    static void dumpStringAttr(std::ostream& strm, std::string_view name, std::string_view value, int indent);
+    static void dumpStringAttr(std::ostream& strm, std::string_view name,
+                               std::string_view value, int indent);
 
     virtual Op clone() const = 0;
     virtual int minNumInputs() const;
     virtual int maxNumInputs() const;
     virtual int minNumOutputs() const;
     virtual int maxNumOutputs() const;
+
+    virtual void setProfileEntry(int idx);
+    virtual int getProfileEntry() const;
 
     virtual bool supportType(int input, int depth) const;
     virtual bool supportInplace(const Net2& net, const Graph& graph,
@@ -290,6 +311,8 @@ public:
                         const std::vector<Tensor>& inputs,
                         std::vector<Tensor>& outputs,
                         std::vector<Buffer>& tempbufs);
+protected:
+    int profileIdx;
 };
 
 class CV_EXPORTS NodeData
@@ -304,8 +327,7 @@ public:
     Node clone(Net2* newnet=nullptr) const;
 
     void dump(const Net2& net, std::ostream& strm,
-              int indent, size_t maxsz_small,
-              bool comma) const;
+              int indent, bool comma) const;
 
     std::string_view name() const;
     Op op() const;
@@ -326,7 +348,7 @@ struct CV_EXPORTS BaseOptimizedGraph
     virtual ~BaseOptimizedGraph();
     virtual GraphBackend* getBackend() const = 0;
     virtual void dump(const Net2& net, const Graph& g,
-                      std::ostream& strm, int indent, size_t maxsz_small) const;
+                      std::ostream& strm, int indent) const;
     virtual bool update(Net2& net, const Graph& g,
                         const std::vector<SizeType>& curr_inpst,
                         const std::vector<SizeType>& prev_inpst,
@@ -340,31 +362,32 @@ typedef std::shared_ptr<BaseOptimizedGraph> OptimizedGraph;
 class CV_EXPORTS GraphData
 {
 public:
-    GraphData();
-    GraphData(Net2& net, std::string_view name,
-          const std::vector<Arg>& inputs,
-          const std::vector<Arg>& outputs,
-          bool ispattern=false);
+    GraphData(const Net2& net, std::string_view name,
+              const std::vector<Arg>& inputs,
+              bool ispattern=false);
     ~GraphData();
     std::string_view name() const;
     bool empty() const;
     void clear();
     Graph clone(Net2* newnet=nullptr) const;
     void append(std::string_view node_name, const Op& op,
-                const std::vector<Arg>& inputs,
                 const std::vector<std::string_view>& outnames,
+                const std::vector<Arg>& inputs,
                 std::vector<Arg>& outputs);
     Arg append(std::string_view node_name, const Op& op,
-               const std::vector<Arg>& inputs,
-               std::string_view outname);
+               std::string_view outname, const std::vector<Arg>& inputs);
     bool isPattern() const;
-    void dump(std::ostream& strm, int indent, size_t maxsz_small, bool comma);
+    void replaceAll(const std::vector<std::pair<Graph, Graph> >& subst);
+    void dump(std::ostream& strm, int indent, bool comma);
     void inferShapes(const std::vector<SizeType>& inpst,
                      std::vector<SizeType>& outst) const;
     Net2* net() const;
     const std::vector<Arg>& inputs() const;
     const std::vector<Arg>& outputs() const;
+    void setOutputs(const std::vector<Arg>& outputs);
     const std::vector<Node>& prog() const;
+    OptimizedGraph getOptimized() const;
+    void setOptimized(const OptimizedGraph& optigraph);
 
 protected:
     bool ispattern_;
@@ -379,30 +402,20 @@ protected:
 
 struct CV_EXPORTS GraphBackend
 {
+    static GraphBackend* CPU();
+    static GraphBackend* fromSpec(std::string_view backendSpec);
     virtual ~GraphBackend();
     virtual Device* device() const = 0;
     virtual std::string_view name() const = 0;
     virtual bool supportType(int type) const = 0;
     virtual int64_t preferredBlockSize(int type) const = 0;
     virtual bool supportOp(const Op& op, const std::vector<SizeType>& inpst) const = 0;
-    virtual Graph preprocessGraph(Net2& net, const Graph& graph,
+    virtual void preprocessGraph(Graph& graph,
                         const std::vector<SizeType>& inpst,
-                        std::vector<Buffer>& tempbufs) = 0;
-    virtual bool forward(Net2& net, const Graph& graph, std::vector<Tensor>& inputs,
-                        std::vector<Tensor>& outputs, std::vector<Buffer>& tempbufs) = 0;
-};
-
-CV_EXPORTS GraphBackend* getCPUBackend();
-CV_EXPORTS GraphBackend* getBackendFromSpec(std::string_view backendSpec);
-
-enum ArgKind { DNN_ARG_CONST=0, DNN_ARG_INPUT=1, DNN_ARG_OUTPUT=2, DNN_ARG_TEMP=3 };
-
-struct CV_EXPORTS ArgInfo
-{
-    ArgInfo();
-    std::string name;
-    ArgKind kind;
-    SizeType st;
+                        std::vector<Buffer>& tempbufs) const;
+    virtual bool forward(Graph& graph, std::vector<Tensor>& inputs,
+                         std::vector<Tensor>& outputs,
+                         std::vector<Buffer>& tempbufs) const;
 };
 
 enum TracingMode
@@ -417,6 +430,12 @@ enum ProfilingMode
     DNN_PROFILE_NONE = 0,
     DNN_PROFILE_SUMMARY = 1,
     DNN_PROFILE_DETAILED = 2
+};
+
+enum ModelFormat {
+    DNN_MODEL_GENERIC = 0,
+    DNN_MODEL_ONNX = 1,
+    DNN_MODEL_TF = 2
 };
 
 class CV_EXPORTS_W_SIMPLE Net2
@@ -434,25 +453,50 @@ public:
     void setTracingMode(TracingMode mode);
     TracingMode getTracingMode() const;
     void setProfilingMode(ProfilingMode mode);
-    void getProfile(std::vector<std::string>& opnames, std::vector<double>& times) const;
     ProfilingMode getProfilingMode() const;
-    Graph newGraph(std::string_view name=std::string_view()) const;
-    Graph newPattern() const;
+    void getProfile(std::vector<std::string>& opnames, std::vector<double>& times) const;
+    int registerProfileEntry(std::string_view opname);
+    // mode 1: we know in advance names of all the graph inputs and outputs (e.g. when we parse ONNX).
+    // The function register arguments with given names and
+    // creates a new empty graph with the inputs and outputs.
+    Graph newGraph(std::string_view name,
+                   const std::vector<std::string>& inpnames,
+                   const std::vector<std::string>& outnames,
+                   bool maingraph) const;
+    // mode 2: we construct the graph manually.
+    // First, we create empty graph with certain input Args (they may or may not have names).
+    // once the graph is constructed, we set the graph outputs using Graph::setOutputs().
+    Graph newGraph(std::string_view name,
+                   const std::vector<Arg>& inputs,
+                   bool maingraph) const;
+    Graph newPatternGraph(std::string_view name,
+                          const std::vector<Arg>& inputs) const;
     Graph getMainGraph() const;
+    void setMainGraph(const Graph& g);
     bool setAccuracy(int type); // typically, CV_16F/CV_16BF can be used to explicitly
                                 // enable FP16/BF16 on backends that support both FP16/BF16 and FP32
     int getAccuracy() const;
     void checkArgs(const std::vector<Arg>& args) const;
     void checkArg(Arg arg) const;
-    ArgInfo argInfo(Arg arg) const;
+    const ArgInfo& argInfo(Arg arg) const;
     std::string_view argName(Arg arg) const;
     ArgKind argKind(Arg arg) const;
+
+    // if name is empty, always creates a new argument;
+    // if it's not empty, returns argument with the specific name if it already exists,
+    // otherwise creates new argument with the specified name
+    Arg getArg(std::string_view name) const;
+
+    Arg newConstArg(std::string_view name, const Tensor& t) const;
     Arg newArg(std::string_view name, ArgKind kind) const;
-    Arg constArg(std::string_view name, const Tensor& t) const;
-    Arg tempArg(std::string_view name=std::string_view()) const;
-    bool isConstArg(Arg idx) const;
-    bool isTempArg(Arg idx) const;
-    Tensor argTensor(Arg idx) const;
+    Arg newPatternArg() const;
+    bool isConstArg(Arg arg) const;
+    bool isTempArg(Arg arg) const;
+    bool isPattern(Arg arg) const;
+    Tensor argTensor(Arg arg) const;
+    TensorSize argSize(Arg arg) const;
+    int argType(Arg arg) const;
+    SizeType argSizeType(Arg arg) const;
 
     bool useBackend(std::string_view backendSpec); // CUDA:1, iGPU, NPU:0, ...
     bool useBackend(GraphBackend* backend); // the latest added backend gets the highest priority
@@ -467,15 +511,16 @@ public:
     void setDumpStream(std::ostream* ostrm) const;
     std::ostream* getDumpStream() const;
     void dump(std::ostream* strm=nullptr) const;
-    void dumpArg(std::ostream& strm, Arg arg, int indent, size_t maxsz_small=10, bool comma=true) const;
-    int deltaIndent() const;
+    void dumpArg(std::ostream& strm, Arg arg, int indent, bool comma=true) const;
+    int indent() const;
 
+    ModelFormat modelFormat() const;
     int onnxOpset() const;
 
     struct Impl;
-    Ptr<Impl> impl() const;
+    std::shared_ptr<Impl> impl() const;
 private:
-    Ptr<Impl> impl_;
+    std::shared_ptr<Impl> p;
 };
 
 struct CV_EXPORTS OnnxReaderParams

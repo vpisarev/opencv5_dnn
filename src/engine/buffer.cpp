@@ -9,8 +9,8 @@ namespace cv { namespace dnn {
 
 BufferData::BufferData()
 {
-    device_ = getCPUDevice();
-    mm_ = getCPUMemoryManager();
+    device_ = Device::CPU();
+    mm_ = MemoryManager::forCPU();
     handle_ = 0;
     host_ptr_ = 0;
     size_ = 0;

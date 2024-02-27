@@ -110,7 +110,7 @@ struct CPUMemoryManager : MemoryManager
 
 static CPUMemoryManager g_CPUMemoryManager;
 
-MemoryManager* getCPUMemoryManager() { return &g_CPUMemoryManager; }
+MemoryManager* MemoryManager::forCPU() { return &g_CPUMemoryManager; }
 
 Device::~Device() {}
 bool Device::isCPU() const { return type() == Device_CPU; }
@@ -150,6 +150,6 @@ bool CPUDevice::isSameDevice(Device* device) const
     return device == nullptr || device->type() == Device_CPU;
 }
 
-Device* getCPUDevice() { return &g_CPU; }
+Device* Device::CPU() { return &g_CPU; }
 
 }}

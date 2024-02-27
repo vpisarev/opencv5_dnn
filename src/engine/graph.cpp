@@ -43,11 +43,11 @@ Node NodeData::clone(Net2* newnet) const
 }
 
 void NodeData::dump(const Net2& net, std::ostream& strm,
-                    int indent, size_t maxsz_small, bool comma) const
+                    int indent, bool comma) const
 {
     size_t ninputs = inputs_.size(), noutputs = outputs_.size();
     size_t ngraphs = subgraphs_.size();
-    int delta_indent = net.deltaIndent();
+    int delta_indent = net.indent();
     int subindent = indent + delta_indent;
     int argindent = subindent + delta_indent;
     prindent(strm, indent);
@@ -55,18 +55,18 @@ void NodeData::dump(const Net2& net, std::ostream& strm,
     strm << opname << "{\n";
     prindent(strm, subindent);
     strm << "name: \"" << name_ << "\",\n";
-    op_->dumpAttrs(strm, subindent, maxsz_small);
+    op_->dumpAttrs(strm, subindent);
     prindent(strm, subindent);
     strm << "inputs: [\n";
     for (size_t i = 0; i < ninputs; i++) {
-        net.dumpArg(strm, inputs_[i], argindent, maxsz_small, i+1 < ninputs);
+        net.dumpArg(strm, inputs_[i], argindent, i+1 < ninputs);
     }
     prindent(strm, subindent);
     strm << "],\n";
     prindent(strm, subindent);
     strm << "outputs: [\n";
     for (size_t i = 0; i < ninputs; i++) {
-        net.dumpArg(strm, outputs_[i], argindent, maxsz_small, i+1 < noutputs);
+        net.dumpArg(strm, outputs_[i], argindent, i+1 < noutputs);
     }
     prindent(strm, subindent);
     strm << "],\n";
@@ -80,12 +80,13 @@ void NodeData::dump(const Net2& net, std::ostream& strm,
             names = {"body"};
         else {
             CV_Error(Error::StsError,
-                     format("unsupported operation '%s' with subgraphs", std::string(opname).c_str()));
+                     format("unsupported operation '%s' with subgraphs",
+                            std::string(opname).c_str()));
         }
         for (size_t i = 0; i < ngraphs; i++) {
             prindent(strm, subindent);
             strm << names[i] << ": ";
-            subgraphs_[i]->dump(strm, argindent, maxsz_small, i+1 < ngraphs);
+            subgraphs_[i]->dump(strm, argindent, i+1 < ngraphs);
         }
     }
     prindent(strm, indent);
@@ -101,23 +102,14 @@ const std::vector<Arg>& NodeData::inputs() const { return inputs_; }
 const std::vector<Arg>& NodeData::outputs() const { return outputs_; }
 const std::vector<Graph>& NodeData::subgraphs() const { return subgraphs_; }
 
-GraphData::GraphData()
-{
-    ispattern_ = false;
-    net_ = 0;
-    backend_ = 0;
-}
-
-GraphData::GraphData(Net2& net, std::string_view name,
+GraphData::GraphData(const Net2& net, std::string_view name,
                      const std::vector<Arg>& inputs,
-                     const std::vector<Arg>& outputs,
                      bool ispattern)
 {
     ispattern_ = ispattern;
-    net_ = &net;
+    net_ = (Net2*)&net;
     name_ = name;
     inputs_ = inputs;
-    outputs_ = outputs;
     backend_ = 0;
 }
 
@@ -134,7 +126,8 @@ void GraphData::clear()
 
 Graph GraphData::clone(Net2* newnet) const
 {
-    Graph g = std::make_shared<GraphData>((newnet ? *newnet : *net_), name_, inputs_, outputs_, ispattern_);
+    Graph g = std::make_shared<GraphData>((newnet ? *newnet : *net_), name_, inputs_, ispattern_);
+    g->outputs_ = outputs_;
     g->backend_ = backend_;
     // don't copy optigraph_. It has to be re-created
     for (auto n : prog_) {
@@ -144,24 +137,65 @@ Graph GraphData::clone(Net2* newnet) const
 }
 
 void GraphData::append(std::string_view node_name, const Op& op,
-                       const std::vector<Arg>& inputs,
                        const std::vector<std::string_view>& outnames,
+                       const std::vector<Arg>& inputs,
                        std::vector<Arg>& outputs)
 {
 
 }
 
 Arg GraphData::append(std::string_view node_name, const Op& op,
-                      const std::vector<Arg>& inputs,
-                      std::string_view outname)
+                      std::string_view outname,
+                      const std::vector<Arg>& inputs)
 {
 
 }
 
 bool GraphData::isPattern() const { return ispattern_; }
-void GraphData::dump(std::ostream& strm, int indent, size_t maxsz_small, bool comma)
+
+void GraphData::dump(std::ostream& strm, int indent, bool comma)
 {
-    
+    size_t ninputs = inputs_.size(), noutputs = outputs_.size();
+    int delta_indent = net_ ? net_->indent() : 3;
+    int subindent = indent + delta_indent;
+    int argindent = subindent + delta_indent;
+    strm << "graph {\n";
+    prindent(strm, subindent);
+    strm << "name: ";
+    if (name_.empty())
+        strm << "<noname>\n";
+    else
+        strm << '\"' << name_ << "\"\n";
+    prindent(strm, subindent);
+    strm << "inputs: [\n";
+    for (size_t i = 0; i < ninputs; i++) {
+        net_->dumpArg(strm, inputs_[i], argindent, i+1 < ninputs);
+    }
+    prindent(strm, subindent);
+    strm << "],\n";
+    prindent(strm, subindent);
+    strm << "outputs: [\n";
+    for (size_t i = 0; i < ninputs; i++) {
+        net_->dumpArg(strm, outputs_[i], argindent, i+1 < noutputs);
+    }
+    prindent(strm, subindent);
+    strm << "],\n";
+    prindent(strm, subindent);
+    strm << "nodes: [\n";
+    size_t nnodes = prog_.size();
+    for (size_t i = 0; i < nnodes; i++) {
+        prindent(strm, subindent);
+        strm << "// op #" << i << "\n";
+        const Node& node = prog_[i];
+        node->dump(*net_, strm, argindent, i+1 < nnodes);
+    }
+    prindent(strm, subindent);
+    strm << "]\n";
+    prindent(strm, indent);
+    strm << "}";
+    if (comma)
+        strm << ",";
+    strm << "\n";
 }
 
 void GraphData::inferShapes(const std::vector<SizeType>& inpst,
@@ -172,6 +206,17 @@ void GraphData::inferShapes(const std::vector<SizeType>& inpst,
 Net2* GraphData::net() const { return net_; }
 const std::vector<Arg>& GraphData::inputs() const { return inputs_; }
 const std::vector<Arg>& GraphData::outputs() const { return outputs_; }
+void GraphData::setOutputs(const std::vector<Arg>& outputs) {
+    net_->checkArgs(outputs);
+    outputs_ = outputs;
+}
 const std::vector<Node>& GraphData::prog() const { return prog_; }
+
+OptimizedGraph GraphData::getOptimized() const { return optigraph_; }
+
+void GraphData::setOptimized(const OptimizedGraph& optigraph)
+{
+    optigraph_ = optigraph;
+}
 
 }}
