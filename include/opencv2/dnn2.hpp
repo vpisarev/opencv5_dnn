@@ -39,6 +39,7 @@ struct CV_EXPORTS TensorSize
     // convert from block layout.
     // the new layout must be explicitly specified and be NCHW or NHWC
     TensorSize fromBlock(TensorLayout newLayout) const;
+    TensorSize expand(const TensorSize& another) const;
     size_t total() const;
     bool empty() const;
     void dump(std::ostream& strm) const;
@@ -271,7 +272,7 @@ struct CV_EXPORTS BaseOp
 {
 public:
     virtual ~BaseOp();
-    virtual std::string_view name() const;
+    virtual std::string_view name() const = 0;
     virtual std::string_view origName() const;
     virtual std::string_view profileName() const;
     virtual void dumpAttrs(std::ostream& strm, int indent) const;
@@ -286,31 +287,32 @@ public:
                                std::string_view value, int indent);
 
     virtual Op clone() const = 0;
-    virtual int minNumInputs() const;
-    virtual int maxNumInputs() const;
-    virtual int minNumOutputs() const;
-    virtual int maxNumOutputs() const;
+    virtual int minNumInputs() const = 0;
+    virtual int maxNumInputs() const = 0;
+    virtual int minNumOutputs() const = 0;
+    virtual int maxNumOutputs() const = 0;
 
     virtual void setProfileEntry(int idx);
     virtual int getProfileEntry() const;
 
-    virtual bool supportType(int input, int depth) const;
+    virtual bool supportType(int input, int depth) const = 0;
+    virtual bool alwaysSupportInplace() const;
     virtual bool supportInplace(const Net2& net, const Graph& graph,
                                 const std::vector<Arg>& inpargs,
                                 const std::vector<SizeType>& inpst) const;
 
-    virtual int64 getFLOPS(const std::vector<SizeType> &inputs,
+    virtual int64_t getFLOPS(const std::vector<SizeType> &inputs,
                            const std::vector<SizeType> &outputs) const;
     virtual void inferShapes(const Net2& net, const Graph& graph,
                             const std::vector<Arg>& inpargs,
                             const std::vector<SizeType>& inpst,
                             const std::vector<Arg>& outargs,
                             std::vector<SizeType>& outst,
-                            std::vector<size_t>& tempbufs) const;
+                            std::vector<size_t>& tempbufs) const = 0;
     virtual void forward(Net2& net, Graph& graph,
                         const std::vector<Tensor>& inputs,
                         std::vector<Tensor>& outputs,
-                        std::vector<Buffer>& tempbufs);
+                        std::vector<Buffer>& tempbufs) = 0;
 protected:
     int profileIdx;
 };

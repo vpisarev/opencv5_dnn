@@ -104,6 +104,12 @@ struct Net2::Impl
     int dump_indent;
 };
 
+bool isIntType(int type);
+bool isSignedIntType(int type);
+bool isFPType(int type);
+
+void prindent(std::ostream& strm, int indent);
+
 }}
 
 #endif

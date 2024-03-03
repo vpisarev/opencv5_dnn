@@ -128,6 +128,37 @@ TensorSize TensorSize::fromBlock(TensorLayout newLayout) const
     return newsize;
 }
 
+TensorSize TensorSize::expand(const TensorSize& another) const
+{
+    if (ndims == 0)
+        return another;
+    if (another.ndims == 0)
+        return *this;
+
+    if ((layout == LAYOUT_NCHW || layout == LAYOUT_NHWC) &&
+        (another.layout == LAYOUT_NCHW || another.layout == LAYOUT_NHWC)) {
+        CV_Assert(layout == another.layout);
+    }
+    // [TODO] support block layout
+    CV_Assert(layout != LAYOUT_NCHWc && another.layout != LAYOUT_NCHWc);
+
+    TensorSize result = *this;
+    result.ndims = std::max(ndims, another.ndims);
+    result.layout = layout == LAYOUT_UNKNOWN ? another.layout :
+        layout == LAYOUT_ND && (another.layout == LAYOUT_NCHW ||
+        another.layout == LAYOUT_NHWC) ? another.layout : layout;
+    for (int i = result.ndims-1; i >= 0; i--) {
+        int i1 = i - (result.ndims - ndims);
+        int i2 = i - (result.ndims - another.ndims);
+        int64_t sz1 = i1 < 0 ? 1 : size[i1];
+        int64_t sz2 = i2 < 0 ? 1 : another.size[i2];
+        CV_Assert(sz1 == sz2 || sz1 == 1 || sz2 == 1);
+        // [TODO] handle symbolic shapes
+        result.size[i] = std::max(sz1, sz2);
+    }
+    return result;
+}
+
 bool operator == (const TensorSize& size1, const TensorSize& size2)
 {
     if (size1.ndims != size2.ndims)

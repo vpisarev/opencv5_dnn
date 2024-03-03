@@ -7,7 +7,7 @@
 
 namespace cv { namespace dnn {
 
-static void prindent(std::ostream& strm, int indent)
+void prindent(std::ostream& strm, int indent)
 {
     for (int i = 0; i < indent; i++)
         strm << ' ';

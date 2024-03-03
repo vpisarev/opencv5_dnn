@@ -11,32 +11,21 @@ enum ElemwiseOpcode
 {
     ELWISE_NONE = 0,
     ELWISE_ADD,
-    ELWISE_ADDS,
     ELWISE_AND,
     ELWISE_DIV,
     ELWISE_EQUAL,
-    ELWISE_EQUALS,
     ELWISE_GREATER,
-    ELWISE_GREATERS,
     ELWISE_GREATER_EQUAL,
-    ELWISE_GREATER_EQUALS,
     ELWISE_LESS,
-    ELWISE_LESSS,
     ELWISE_LESS_EQUAL,
-    ELWISE_LESS_EQUALS,
     ELWISE_MAX,
-    ELWISE_MAXS,
     ELWISE_MEAN,
     ELWISE_MIN,
-    ELWISE_MINS,
     ELWISE_MOD,
     ELWISE_MUL,
-    ELWISE_MULS,
     ELWISE_POW,
-    ELWISE_POWS,
     ELWISE_OR,
     ELWISE_SUB,
-    ELWISE_SUBRS,
     ELWISE_SUM,
     ELWISE_XOR,
 
@@ -49,7 +38,6 @@ enum ElemwiseOpcode
     ELWISE_ATANH,
     ELWISE_CEIL,
     ELWISE_CLIP,
-    ELWISE_CLIPS,
     ELWISE_COS,
     ELWISE_COSH,
     ELWISE_ERF,
@@ -72,8 +60,12 @@ enum ElemwiseOpcode
     ELWISE_SOFTSIGN,
     ELWISE_SQRT,
     ELWISE_TAN,
-    ELWISE_TANH
+    ELWISE_TANH,
+
+    ELWISE_OPCODE_MAX,
 };
+
+CV_EXPORTS std::string_view elemwiseOpcode2str(ElemwiseOpcode opcode);
 
 enum ReduceOpcode
 {
@@ -87,8 +79,12 @@ enum ReduceOpcode
     REDUCE_MIN,
     REDUCE_PROD,
     REDUCE_SUM,
-    REDUCE_SUM_SQUARE
+    REDUCE_SUM_SQUARE,
+
+    REDUCE_OPCODE_MAX
 };
+
+CV_EXPORTS std::string_view reduceOpcode2str(ReduceOpcode opcode);
 
 CV_EXPORTS Arg constant(Graph& graph, std::string_view opname,
                         std::string_view outname, InputArray arr);
@@ -113,13 +109,12 @@ struct CV_EXPORTS ElemwiseOp : public BaseOp
 {
 public:
     enum { MAX_PARAMS=10 };
-    typedef void (*forward_t)(size_t ninputs, const void** inputs,
+    typedef void (*forward_t)(size_t ninputs, const void** inputs, size_t* steps,
                               void* output, size_t len, const float* params);
     static Op create(ElemwiseOpcode opcode, const float* params=nullptr, size_t nparams=0);
     virtual ~ElemwiseOp();
-    virtual ElemwiseOpcode elemwiseOpcode() const;
 
-    virtual forward_t getForwardSlice(int type) const;
+    virtual forward_t getForwardSlice(int type) const = 0;
     ElemwiseOpcode opcode;
     float params[MAX_PARAMS];
 };
@@ -249,7 +244,6 @@ struct CV_EXPORTS ReduceOp : public BaseOp
 public:
     static Op create(ReduceOpcode opcode, bool keepdims=true, bool noOpWithEmptyAxes=false);
     virtual ~ReduceOp();
-    virtual ReduceOpcode reduceOpcode() const;
     ReduceOpcode opcode;
     bool keepdims;
     bool noOpWithEmptyAxes;
@@ -303,6 +297,7 @@ struct CV_EXPORTS ConvParams
 */
 struct CV_EXPORTS ArgMaxOp : public BaseOp
 {
+    static Op create(int axis, bool keepdims, bool selectLastIndex);
     virtual ~ArgMaxOp();
 
     int axis;
@@ -319,6 +314,7 @@ CV_EXPORTS Arg argMax(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS ArgMinOp : public BaseOp
 {
+    static Op create(int axis, bool keepdims, bool selectLastIndex);
     virtual ~ArgMinOp();
 
     int axis;
@@ -336,6 +332,7 @@ CV_EXPORTS Arg argMin(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS AveragePoolOp : public BaseOp
 {
+    static Op create(const ConvParams& convparams, bool countIncludePadding);
     virtual ~AveragePoolOp();
 
     ConvParams params;
@@ -352,6 +349,7 @@ CV_EXPORTS Arg averagePool(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS BatchNormOp : public BaseOp
 {
+    static Op create(double epsilon, double momentum, bool trainingMode);
     virtual ~BatchNormOp();
 
     double epsilon;
@@ -367,6 +365,7 @@ CV_EXPORTS Arg batchNorm(Graph& graph, std::string_view opname, std::string_view
 */
 struct CV_EXPORTS CastOp : public BaseOp
 {
+    static Op create(int type);
     virtual ~CastOp();
 
     int type;
@@ -380,6 +379,7 @@ CV_EXPORTS Arg cast(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS ConcatOp : public BaseOp
 {
+    static Op create(int axis);
     virtual ~ConcatOp();
 
     int axis;
@@ -393,6 +393,7 @@ CV_EXPORTS Arg concat(Graph& graph, std::string_view opname, std::string_view ou
 */
 struct CV_EXPORTS ConstantOfShapeOp : public BaseOp
 {
+    static Op create(Tensor value);
     virtual ~ConstantOfShapeOp();
 
     Tensor value;
@@ -407,6 +408,7 @@ CV_EXPORTS Arg constantOfShape(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS ConvOp : public BaseOp
 {
+    static Op create(const ConvParams& convparams);
     virtual ~ConvOp();
 
     ConvParams params;
@@ -423,6 +425,7 @@ CV_EXPORTS Arg conv(Graph& graph, std::string_view opname, std::string_view outn
 */
 struct CV_EXPORTS ConvTransposeOp : public BaseOp
 {
+    static Op create(const ConvParams& convparams);
     virtual ~ConvTransposeOp();
 
     ConvParams params;
@@ -436,6 +439,7 @@ CV_EXPORTS Arg convTranspose(Graph& graph, std::string_view opname, std::string_
 */
 struct CV_EXPORTS DropoutOp : public BaseOp
 {
+    static Op create(int64_t seed);
     virtual ~DropoutOp();
 
     int64_t seed;
@@ -449,6 +453,7 @@ CV_EXPORTS Arg dropout(Graph& graph, std::string_view opname, std::string_view o
 */
 struct CV_EXPORTS ExpandOp : public BaseOp
 {
+    static Op create();
     virtual ~ExpandOp();
 };
 
@@ -460,6 +465,7 @@ CV_EXPORTS Arg expand(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS FlattenOp : public BaseOp
 {
+    static Op create();
     virtual ~FlattenOp();
 
     int axis;
@@ -473,6 +479,7 @@ CV_EXPORTS Arg flatten(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS GatherOp : public BaseOp
 {
+    static Op create(int axis);
     virtual ~GatherOp();
 
     int axis;
@@ -487,6 +494,7 @@ CV_EXPORTS Arg gather(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS GemmOp : public BaseOp
 {
+    static Op create(double alpha, double beta, bool transA, bool transB);
     virtual ~GemmOp();
 
     double alpha, beta;
@@ -502,6 +510,7 @@ CV_EXPORTS Arg gemm(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS GlobalAveragePoolOp : public BaseOp
 {
+    static Op create();
     virtual ~GlobalAveragePoolOp();
 };
 
@@ -514,6 +523,7 @@ CV_EXPORTS Arg globalAveragePool(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS IdentityOp : public BaseOp
 {
+    static Op create();
     virtual ~IdentityOp();
 };
 
@@ -525,6 +535,7 @@ CV_EXPORTS Arg identity(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS IfOp : public BaseOp
 {
+    static Op create();
     virtual ~IfOp();
 };
 
@@ -538,6 +549,7 @@ CV_EXPORTS void if_(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS InstanceNormalizeOp : public BaseOp
 {
+    static Op create(double epsilon);
     virtual ~InstanceNormalizeOp();
 
     double epsilon;
@@ -552,6 +564,7 @@ CV_EXPORTS Arg instanceNormalize(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS LayerNormalizeOp : public BaseOp
 {
+    static Op create(int axis, double epsilon, int stashType);
     virtual ~LayerNormalizeOp();
 
     int axis;
@@ -568,6 +581,7 @@ CV_EXPORTS Arg layerNormalize(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS LoopOp : public BaseOp
 {
+    static Op create(size_t noutputs);
     virtual ~LoopOp();
     size_t noutputs;
 };
@@ -583,7 +597,11 @@ CV_EXPORTS void loop(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS LRNOp : public BaseOp
 {
+    static Op create(double alpha, double beta, double bias, int size);
     virtual ~LRNOp();
+
+    double alpha, beta, bias;
+    int size;
 };
 
 CV_EXPORTS Arg LRN(Graph& graph, std::string_view opname,
@@ -606,6 +624,7 @@ CV_EXPORTS Arg matMul(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS MaxPoolOp : public BaseOp
 {
+    static Op create(const ConvParams& convparams, bool computeIndices, bool rowMajorOrder);
     virtual ~MaxPoolOp();
 
     ConvParams params;
@@ -622,9 +641,9 @@ CV_EXPORTS Arg maxPool(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS NonMaxSuppressionOp : public BaseOp
 {
+    static Op create(bool centerPointBox);
     virtual ~NonMaxSuppressionOp();
 
-    ConvParams params;
     bool centerPointBox;
 };
 
@@ -638,6 +657,7 @@ CV_EXPORTS Arg nonMaxSuppression(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS NonZeroOp : public BaseOp
 {
+    static Op create();
     virtual ~NonZeroOp();
 };
 
@@ -649,6 +669,7 @@ CV_EXPORTS Arg nonZero(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS PadOp : public BaseOp
 {
+    static Op create(int borderMode);
     virtual ~PadOp();
 
     int borderMode;
@@ -663,6 +684,7 @@ CV_EXPORTS Arg pad(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS RangeOp : public BaseOp
 {
+    static Op create();
     virtual ~RangeOp();
 };
 
@@ -674,6 +696,7 @@ CV_EXPORTS Arg range(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS ReshapeOp : public BaseOp
 {
+    static Op create(bool allowZero);
     virtual ~ReshapeOp();
 
     bool allowZero;
@@ -724,6 +747,7 @@ struct ResizeParams
 */
 struct CV_EXPORTS ResizeOp : public BaseOp
 {
+    static Op create(const ResizeParams& params);
     virtual ~ResizeOp();
 
     ResizeParams params;
@@ -738,6 +762,7 @@ CV_EXPORTS Arg resize(Graph& graph, std::string_view opname, std::string_view ou
 */
 struct CV_EXPORTS ScatterOp : public BaseOp
 {
+    static Op create(int axis);
     virtual ~ScatterOp();
 
     int axis;
@@ -752,6 +777,7 @@ CV_EXPORTS Arg scatter(Graph& graph, std::string_view opname, std::string_view o
 */
 struct CV_EXPORTS ShapeOp : public BaseOp
 {
+    static Op create(int start, int end);
     virtual ~ShapeOp();
 
     int start, end;
@@ -766,26 +792,26 @@ CV_EXPORTS Arg shape(Graph& graph, std::string_view opname, std::string_view out
 */
 struct CV_EXPORTS SliceOp : public BaseOp
 {
+    static Op create();
     virtual ~SliceOp();
-
-    int start, end;
 };
 
 CV_EXPORTS Arg slice(Graph& graph, std::string_view opname, std::string_view outname,
-                     Arg input, int start=0, int end=INT_MAX);
+                     Arg input, Arg starts, Arg ends, Arg axes=Arg(), Arg steps=Arg());
 
 /*
     SoftMax
 */
 struct CV_EXPORTS SoftMaxOp : public BaseOp
 {
+    static Op create(int axis);
     virtual ~SoftMaxOp();
 
-    int start, end;
+    int axis;
 };
 
-CV_EXPORTS Arg softMax(Graph& graph, std::string_view opname, std::string_view outname,
-                       Arg input, int start=0, int end=INT_MAX);
+CV_EXPORTS Arg softMax(Graph& graph, std::string_view opname,
+                       std::string_view outname, Arg input, int axis);
 
 
 /*
@@ -793,13 +819,15 @@ CV_EXPORTS Arg softMax(Graph& graph, std::string_view opname, std::string_view o
 */
 struct CV_EXPORTS SplitOp : public BaseOp
 {
+    static Op create(int axis, size_t noutputs);
     virtual ~SplitOp();
 
+    int axis;
     size_t noutputs;
 };
 
 CV_EXPORTS Arg split(Graph& graph, std::string_view opname, std::string_view outname,
-                     Arg input, Arg split, size_t noutputs=0);
+                     Arg input, Arg split, int axis, size_t noutputs);
 
 
 /*
@@ -807,6 +835,7 @@ CV_EXPORTS Arg split(Graph& graph, std::string_view opname, std::string_view out
 */
 struct CV_EXPORTS SqueezeOp : public BaseOp
 {
+    static Op create();
     virtual ~SqueezeOp();
 };
 
@@ -819,6 +848,7 @@ CV_EXPORTS Arg squeeze(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS TileOp : public BaseOp
 {
+    static Op create();
     virtual ~TileOp();
 };
 
@@ -831,6 +861,7 @@ CV_EXPORTS Arg tile(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS TopKOp : public BaseOp
 {
+    static Op create(int axis, bool largest, bool sorted);
     virtual ~TopKOp();
 
     int axis;
@@ -839,7 +870,7 @@ struct CV_EXPORTS TopKOp : public BaseOp
 };
 
 CV_EXPORTS Arg topK(Graph& graph, std::string_view opname,
-                    std::string_view outname, Arg input,
+                    std::string_view outname, Arg input, Arg K,
                     int axis=-1, bool largest=true, bool sorted=true);
 
 /*
@@ -847,6 +878,7 @@ CV_EXPORTS Arg topK(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS TransposeOp : public BaseOp
 {
+    static Op create(const std::vector<int>& perm);
     virtual ~TransposeOp();
 
     std::vector<int> perm;
@@ -861,6 +893,7 @@ CV_EXPORTS Arg transpose(Graph& graph, std::string_view opname, std::string_view
 */
 struct CV_EXPORTS UnsqueezeOp : public BaseOp
 {
+    static Op create(const std::vector<int>& perm);
     virtual ~UnsqueezeOp();
 };
 

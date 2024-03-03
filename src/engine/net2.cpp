@@ -34,12 +34,10 @@ Net2::Impl::Impl(Net2* net_)
     defaultMemoryManager = MemoryManager::forCPU();
 
     accuracy = CV_32F;
-#if CV_FP16
-    enableFP16 = haveFP16 = true;
-    //accuracy = CV_16F;
-#else
     enableFP16 = haveFP16 = false;
-#endif
+    if (checkHardwareSupport(CV_CPU_FP16)) {
+        enableFP16 = haveFP16 = true;
+    }
 
     tracingMode = DNN_TRACE_NONE;
     profilingMode = DNN_PROFILE_NONE;
