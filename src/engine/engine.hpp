@@ -104,6 +104,9 @@ struct Net2::Impl
     int dump_indent;
 };
 
+int prepareForBroadcasting(int ntensors, const TensorSize* sizes0,
+                           TensorSize* sizes, size_t** steps);
+
 bool isIntType(int type);
 bool isSignedIntType(int type);
 bool isFPType(int type);

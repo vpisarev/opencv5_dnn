@@ -109,12 +109,13 @@ struct CV_EXPORTS ElemwiseOp : public BaseOp
 {
 public:
     enum { MAX_PARAMS=10 };
-    typedef void (*forward_t)(size_t ninputs, const void** inputs, size_t* steps,
+    typedef void (*forward_t)(size_t ninputs, const void** inputs, const size_t* steps,
                               void* output, size_t len, const float* params);
     static Op create(ElemwiseOpcode opcode, const float* params=nullptr, size_t nparams=0);
     virtual ~ElemwiseOp();
 
-    virtual forward_t getForwardSlice(int type) const = 0;
+    static forward_t getForwardSlice(ElemwiseOpcode opcode, int type);
+    virtual forward_t getForwardSlice(int type) const;
     ElemwiseOpcode opcode;
     float params[MAX_PARAMS];
 };

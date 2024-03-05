@@ -13,6 +13,7 @@ namespace cv {
 namespace dnn {
 
 void test_tensor_basic();
+void test_elemwise();
 
 }
 }

@@ -6,5 +6,6 @@
 
 int main(int, char**)
 {
-    cv::dnn::test_tensor_basic();
+    //cv::dnn::test_tensor_basic();
+    cv::dnn::test_elemwise();
 }

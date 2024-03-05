@@ -28,4 +28,40 @@ void test_tensor_basic()
     t2.dump(std::cout, 3);
 }
 
+void test_elemwise()
+{
+    int m = 5, n = 6;
+    printf("=========== ELEMWISE OP TEST ===========\n");
+    Tensor a({{m, n}, LAYOUT_UNKNOWN}, CV_32S);
+    Tensor b({{m, n}, LAYOUT_UNKNOWN}, CV_32S);
+    Tensor s = Tensor::makeScalar(3);
+    std::vector<Tensor> c;//({{m, n}, LAYOUT_UNKNOWN}, CV_32S);
+    std::vector<Buffer> tmp;
+    int* adata = a.ptr<int>();
+    int* bdata = b.ptr<int>();
+
+    for (int i = 0; i < m*n; i++) {
+        adata[i] = -i;
+        bdata[i] = i*3;
+    }
+    Net2 net;
+    Graph g = net.newGraph("main", {}, {}, true);
+    Op addop = ElemwiseOp::create(ELWISE_ADD);
+    Op mulop = ElemwiseOp::create(ELWISE_MUL);
+    addop->forward(net, g, {a, b}, c, tmp);
+    c[0].dump(std::cout, 0);
+    std::cout << "\n";
+    mulop->forward(net, g, {s, c[0]}, c, tmp);
+    c[0].dump(std::cout, 0);
+    a = Tensor({{m, 1}, LAYOUT_UNKNOWN}, CV_32S);
+    b = Tensor({{1, n}, LAYOUT_UNKNOWN}, CV_32S);
+    adata = a.ptr<int>();
+    bdata = b.ptr<int>();
+    for (int i = 0; i < m; i++) adata[i] = i+1;
+    for (int i = 0; i < n; i++) bdata[i] = i+1;
+    mulop->forward(net, g, {a, b}, c, tmp);
+    std::cout << "\n";
+    c[0].dump(std::cout, 0);
+}
+
 }}
