@@ -42,12 +42,12 @@ struct CV_EXPORTS TensorSize
     TensorSize expand(const TensorSize& another) const;
     size_t total() const;
     bool empty() const;
-    void dump(std::ostream& strm) const;
-    enum {MAX_NDIMS=10};
+    std::ostream& dump(std::ostream& strm) const;
+    enum {MAX_DIMS=10};
     TensorLayout layout;
     int ndims;
     int64_t C;
-    int64_t size[MAX_NDIMS];
+    int64_t size[MAX_DIMS];
 };
 
 // when both 'layout' and 'another.layout' are block layouts, we also check 'C == another.C'
@@ -62,7 +62,7 @@ struct CV_EXPORTS SizeType
     SizeType toBlock(int64_t C0) const;
     SizeType fromBlock(TensorLayout layout) const;
 
-    void dump(std::ostream& strm) const;
+    std::ostream& dump(std::ostream& strm) const;
 };
 
 CV_EXPORTS bool operator == (const SizeType& st0, const SizeType& st1);
@@ -165,6 +165,12 @@ public:
     {
         return makeScalar(DataType<_Tp>::type, &value, device);
     }
+    static Tensor makeVector(int type, const void* value, size_t nelems, Device* device=nullptr);
+    template<typename _Tp> static Tensor makeVector(const std::vector<_Tp>& values,
+                                                    Device* device=nullptr)
+    {
+        return makeVector(DataType<_Tp>::type, values.data(), values.size(), device);
+    }
     bool isScalar() const;
     bool getScalar(int type, void* scalar) const;
     template<typename _Tp> _Tp getScalar() const {
@@ -218,7 +224,7 @@ public:
     void* map(BufAccess access=DNN_BUF_RW);
     void unmap(BufAccess access=DNN_BUF_RW);
 
-    void dump(std::ostream& strm, int indent, int context=0,
+    std::ostream& dump(std::ostream& strm, int indent, int context=0,
               size_t maxsz_all=0, bool braces=true) const;
 
 protected:
@@ -275,7 +281,7 @@ public:
     virtual std::string_view name() const = 0;
     virtual std::string_view origName() const;
     virtual std::string_view profileName() const;
-    virtual void dumpAttrs(std::ostream& strm, int indent) const;
+    virtual std::ostream& dumpAttrs(std::ostream& strm, int indent) const;
     static void dumpTensorAttr(std::ostream& strm, std::string_view name,
                                const Tensor& t, int indent);
     static void dumpScalarAttr(std::ostream& strm, std::string_view name,
@@ -328,8 +334,8 @@ public:
     ~NodeData();
     Node clone(Net2* newnet=nullptr) const;
 
-    void dump(const Net2& net, std::ostream& strm,
-              int indent, bool comma) const;
+    std::ostream& dump(const Net2& net, std::ostream& strm,
+                       int indent, bool comma) const;
 
     std::string_view name() const;
     Op op() const;
@@ -349,8 +355,8 @@ struct CV_EXPORTS BaseOptimizedGraph
 {
     virtual ~BaseOptimizedGraph();
     virtual GraphBackend* getBackend() const = 0;
-    virtual void dump(const Net2& net, const Graph& g,
-                      std::ostream& strm, int indent) const;
+    virtual std::ostream& dump(const Net2& net, const Graph& g,
+                               std::ostream& strm, int indent) const;
     virtual bool update(Net2& net, const Graph& g,
                         const std::vector<SizeType>& curr_inpst,
                         const std::vector<SizeType>& prev_inpst,
@@ -380,7 +386,7 @@ public:
                std::string_view outname, const std::vector<Arg>& inputs);
     bool isPattern() const;
     void replaceAll(const std::vector<std::pair<Graph, Graph> >& subst);
-    void dump(std::ostream& strm, int indent, bool comma);
+    std::ostream& dump(std::ostream& strm, int indent, bool comma);
     void inferShapes(const std::vector<SizeType>& inpst,
                      std::vector<SizeType>& outst) const;
     Net2* net() const;
@@ -512,8 +518,8 @@ public:
     // set default stream for dumping and tracing
     void setDumpStream(std::ostream* ostrm) const;
     std::ostream* getDumpStream() const;
-    void dump(std::ostream* strm=nullptr) const;
-    void dumpArg(std::ostream& strm, Arg arg, int indent, bool comma=true) const;
+    std::ostream& dump(std::ostream* strm=nullptr) const;
+    std::ostream& dumpArg(std::ostream& strm, Arg arg, int indent, bool comma=true) const;
     int indent() const;
 
     ModelFormat modelFormat() const;

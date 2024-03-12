@@ -422,7 +422,7 @@ std::ostream* Net2::getDumpStream() const
     return p->strm;
 }
 
-void Net2::dump(std::ostream* strm0) const
+std::ostream& Net2::dump(std::ostream* strm0) const
 {
     std::ostream& strm = strm0 ? *strm0 : *getDumpStream();
     Graph g = getMainGraph();
@@ -431,11 +431,12 @@ void Net2::dump(std::ostream* strm0) const
     } else {
         g->dump(strm, 0, false);
     }
+    return strm;
 }
 
-void Net2::dumpArg(std::ostream& strm, Arg arg, int indent, bool comma) const
+std::ostream& Net2::dumpArg(std::ostream& strm, Arg arg, int indent, bool comma) const
 {
-
+    return strm;
 }
 
 int Net2::indent() const { return p->dump_indent; }

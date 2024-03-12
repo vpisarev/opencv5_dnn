@@ -45,11 +45,12 @@ namespace cv { namespace dnn {
            to the final shape to keep it max_ndims-dimensional.
 */
 int prepareForBroadcasting(
-    int ntensors, const TensorSize* sizes0,
+    size_t ntensors, const TensorSize* sizes0,
     TensorSize* sizes, size_t** steps)
 {
     int max_ndims = 1;
-    int i, j, k;
+    int i, j;
+    size_t k;
     for (k = 0; k < ntensors; k++)
         max_ndims = std::max(max_ndims, sizes0[k].ndims);
 
@@ -535,7 +536,7 @@ ElemwiseOp::forward_t ElemwiseOp::getForwardSlice(ElemwiseOpcode opcode, int typ
         func_tabs[ELWISE_LESS] = lt_tab;
         func_tabs[ELWISE_LESS_EQUAL] = le_tab;
         func_tabs[ELWISE_MAX] = max_tab;
-        func_tabs[ELWISE_MEAN] = add_tab;
+        func_tabs[ELWISE_MEAN] = mean_tab;
         func_tabs[ELWISE_MIN] = min_tab;
         func_tabs[ELWISE_MOD] = mod_tab;
         func_tabs[ELWISE_MUL] = mul_tab;
@@ -745,7 +746,7 @@ public:
         size_t ninputs = inputs.size();
         CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
 
-        AutoBuffer<int64_t> sizesbuf((ninputs+1)*2*(sizeof(TensorSize)/sizeof(int64_t)) + (ninputs + 1)*(2 + TensorSize::MAX_NDIMS));
+        AutoBuffer<int64_t> sizesbuf((ninputs+1)*2*(sizeof(TensorSize)/sizeof(int64_t)) + (ninputs + 1)*(2 + TensorSize::MAX_DIMS));
         TensorSize* sizes0 = (TensorSize*)sizesbuf.data(), *sizes = sizes0 + ninputs + 1;
         size_t** steps = (size_t**)(sizes + ninputs + 1);
         void** dataptr0 = (void**)(steps + ninputs + 1);
@@ -755,7 +756,7 @@ public:
         TensorSize* outsize = &sizes0[ninputs];
         sizes0[0] = *outsize = inputs[0].size();
         steps[0] = stepsdata;
-        steps[ninputs] = stepsdata + ninputs*TensorSize::MAX_NDIMS;
+        steps[ninputs] = stepsdata + ninputs*TensorSize::MAX_DIMS;
         CV_Assert(inputs[0].isContinuous());
         dataptr0[0] = (void*)inputs[0].data();
 
@@ -764,7 +765,7 @@ public:
             CV_Assert(inputs[k].type() == inputs[0].type());
             CV_Assert(inputs[0].isContinuous());
             *outsize = outsize->expand(sizes0[k]);
-            steps[k] = stepsdata + k*TensorSize::MAX_NDIMS;
+            steps[k] = stepsdata + k*TensorSize::MAX_DIMS;
             dataptr0[k] = (void*)inputs[k].data();
         }
 
@@ -781,7 +782,7 @@ public:
         dataptr0[ninputs] = (void*)out.data();
 
         // some of inputs are empty => result is empty
-        int max_ndims = prepareForBroadcasting(3, sizes0, sizes, steps);
+        int max_ndims = prepareForBroadcasting(ninputs+1, sizes0, sizes, steps);
         if (max_ndims <= 0)
             return;
         outsize = &sizes[ninputs];
@@ -830,7 +831,7 @@ public:
             CV_Assert(ninputs > 1);
             const void* inptr[2];
             void* outptr;
-            int64_t idxbuf[TensorSize::MAX_NDIMS];
+            int64_t idxbuf[TensorSize::MAX_DIMS];
             float scale = 0.;
             const float* curr_params = params;
             if (opcode == ELWISE_MEAN) {

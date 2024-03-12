@@ -30,7 +30,7 @@ TensorSize::TensorSize()
 TensorSize::TensorSize(int ndims_, const int64_t* size_, TensorLayout layout_)
 {
     layout = layout_;
-    CV_Assert(0 <= ndims_ && ndims_ <= MAX_NDIMS);
+    CV_Assert(0 <= ndims_ && ndims_ <= MAX_DIMS);
     ndims = ndims_;
     for (int i = 0; i < ndims; i++) {
         size[i] = size_[i];
@@ -43,7 +43,7 @@ TensorSize::TensorSize(std::initializer_list<int64_t> size_, TensorLayout layout
 {
     layout = layout_;
     size_t sz = size_.size();
-    CV_Assert(sz <= MAX_NDIMS);
+    CV_Assert(sz <= MAX_DIMS);
     ndims = (int)sz;
     auto it = size_.begin();
     for (int i = 0; i < ndims; i++, ++it) {
@@ -71,7 +71,7 @@ TensorSize TensorSize::fromArray(InputArray m, TensorLayout layout_)
     size.layout = layout_;
 
     if (!m.empty()) {
-        int msize[TensorSize::MAX_NDIMS];
+        int msize[TensorSize::MAX_DIMS];
         size.ndims = m.sizend(msize);
         for (int i = 0; i < size.ndims; i++)
             size.size[i] = msize[i];
@@ -179,7 +179,7 @@ bool operator != (const TensorSize& size1, const TensorSize& size2)
     return !(size1 == size2);
 }
 
-void TensorSize::dump(std::ostream& strm) const
+std::ostream& TensorSize::dump(std::ostream& strm) const
 {
     if (empty()) {
         strm << "<empty>";
@@ -200,6 +200,7 @@ void TensorSize::dump(std::ostream& strm) const
         }
         strm << ">";
     }
+    return strm;
 }
 
 size_t SizeType::totalBytes() const
@@ -236,7 +237,7 @@ static const char* depthToStr(int type)
         depth == CV_Bool ? "Bool" : "???";
 }
 
-void SizeType::dump(std::ostream& strm) const
+std::ostream& SizeType::dump(std::ostream& strm) const
 {
     strm << depthToStr(type);
     int cn = CV_MAT_CN(type);
@@ -244,13 +245,14 @@ void SizeType::dump(std::ostream& strm) const
         strm << "C" << cn;
     strm << " ";
     size.dump(strm);
+    return strm;
 }
 
 ///////////////////////////// Tensor /////////////////////////////
 
 void Tensor::init()
 {
-    flags_ = 0;
+    flags_ = CONTINUOUS_FLAG;
     type_ = 0;
     ext_data_ = 0;
     slice_start_ = slice_maxsize_ = 0;
@@ -291,7 +293,7 @@ void Tensor::release()
     type_ = 0;
     size_ = TensorSize();
     if (!usesBufferSlice()) {
-        flags_ = 0;
+        flags_ = CONTINUOUS_FLAG;
         if (buf_)
             buf_->release();
         slice_start_ = slice_maxsize_ = 0;
@@ -371,12 +373,19 @@ Tensor Tensor::makeScalar(int type, const void* value, Device* device)
     return Tensor(TensorSize({1}, LAYOUT_UNKNOWN), type, (void*)value, true, device);
 }
 
+Tensor Tensor::makeVector(int type, const void* values, size_t nvalues, Device* device)
+{
+    return Tensor(TensorSize({(int64_t)nvalues}, LAYOUT_UNKNOWN), type, (void*)values, true, device);
+}
+
 void Tensor::fit(const TensorSize& size, int type)
 {
     if (size == size_ && CV_MAT_TYPE(type) == type_)
         return;
-    CV_Assert(buf_);
     CV_Assert(!ext_data_);
+    if (!buf_)
+        buf_ = BufferData::allocate(0);
+
     flags_ |= CONTINUOUS_FLAG;
     type_ = type;
     size_ = size;
@@ -464,7 +473,7 @@ void Tensor::setBufferSlice(const Buffer& buffer, size_t start, size_t maxsize)
     CV_Assert(buffer);
     size_t bufsize = buffer->size();
     CV_Assert(start + maxsize <= bufsize);
-    flags_ = BUFFER_SLICE_FLAG;
+    flags_ = CONTINUOUS_FLAG | BUFFER_SLICE_FLAG;
     type_ = 0;
     size_ = TensorSize();
     buf_ = buffer;
@@ -505,8 +514,8 @@ void* Tensor::data() const
 
 Mat Tensor::getMat() const
 {
-    int mshape[TensorSize::MAX_NDIMS];
-    int mdims = size_.toMatShape(mshape, TensorSize::MAX_NDIMS);
+    int mshape[TensorSize::MAX_DIMS];
+    int mdims = size_.toMatShape(mshape, TensorSize::MAX_DIMS);
     void* dataptr = data();
     return Mat(mdims, mshape, type_, dataptr);
 }
@@ -774,8 +783,8 @@ static void dumpSlice(std::ostream& strm, const Tensor& t, const size_t* step, i
     }
 }
 
-void Tensor::dump(std::ostream& strm, int indent, int border0_,
-                  size_t maxsz_all_, bool braces) const
+std::ostream& Tensor::dump(std::ostream& strm, int indent, int border0_,
+                           size_t maxsz_all_, bool braces) const
 {
     int border0 = border0_ > 0 ? border0_ : 3;
     size_t maxsz_all = maxsz_all_ > 0 ? maxsz_all_ : 100;
@@ -795,7 +804,7 @@ void Tensor::dump(std::ostream& strm, int indent, int border0_,
         int ndims = size_.ndims;
         int64_t border = sz_all < maxsz_all ? 0 : border0;
         int cn = channels();
-        size_t step[TensorSize::MAX_NDIMS];
+        size_t step[TensorSize::MAX_DIMS];
         step[ndims-1] = 1;
         for (int i = ndims-2; i >= 0; i--) {
             step[i] = step[i+1]*size_.size[i+1]*cn;
@@ -806,6 +815,7 @@ void Tensor::dump(std::ostream& strm, int indent, int border0_,
     }
     if (braces)
         strm << "]";
+    return strm;
 }
 
 }}

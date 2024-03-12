@@ -2,12 +2,8 @@
 // It is subject to the license terms in the LICENSE file found in the top-level directory
 // of this distribution and at http://opencv.org/license.html.
 
-#include "test_all.hpp"
+#include "../precomp.hpp"
+#include "../engine/engine.hpp"
 
-int main(int, char**)
-{
-    //cv::dnn::test_tensor_basic();
-    //cv::dnn::test_elemwise();
-    //cv::dnn::test_0d();
-    cv::dnn::test_reduce();
-}
+namespace cv { namespace dnn {
+}}

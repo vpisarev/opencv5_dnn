@@ -10,7 +10,7 @@ namespace cv { namespace dnn {
 BaseOp::~BaseOp() {}
 std::string_view BaseOp::origName() const { return name(); }
 std::string_view BaseOp::profileName() const { return name(); }
-void BaseOp::dumpAttrs(std::ostream&, int) const {}
+std::ostream& BaseOp::dumpAttrs(std::ostream& strm, int) const { return strm; }
 
 void BaseOp::dumpTensorAttr(std::ostream& strm, std::string_view name,
                             const Tensor& t, int indent)

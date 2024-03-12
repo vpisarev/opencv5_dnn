@@ -25,7 +25,7 @@ void test_tensor_basic()
     for (size_t i = 0; i < sz; i++) {
         data[i] = (float)(data[i] + i);
     }
-    t2.dump(std::cout, 3);
+    t2.dump(std::cout, 3) << "\n";
 }
 
 void test_elemwise()
@@ -46,13 +46,12 @@ void test_elemwise()
     }
     Net2 net;
     Graph g = net.newGraph("main", {}, {}, true);
-    Op addop = ElemwiseOp::create(ELWISE_ADD);
+    Op meanop = ElemwiseOp::create(ELWISE_MEAN);
     Op mulop = ElemwiseOp::create(ELWISE_MUL);
-    addop->forward(net, g, {a, b}, c, tmp);
-    c[0].dump(std::cout, 0);
-    std::cout << "\n";
+    meanop->forward(net, g, {a, b}, c, tmp);
+    c[0].dump(std::cout, 0) << "\n";
     mulop->forward(net, g, {s, c[0]}, c, tmp);
-    c[0].dump(std::cout, 0);
+    c[0].dump(std::cout, 0) << "\n";
     a = Tensor({{m, 1}, LAYOUT_UNKNOWN}, CV_32S);
     b = Tensor({{1, n}, LAYOUT_UNKNOWN}, CV_32S);
     adata = a.ptr<int>();
@@ -60,8 +59,67 @@ void test_elemwise()
     for (int i = 0; i < m; i++) adata[i] = i+1;
     for (int i = 0; i < n; i++) bdata[i] = i+1;
     mulop->forward(net, g, {a, b}, c, tmp);
-    std::cout << "\n";
-    c[0].dump(std::cout, 0);
+    c[0].dump(std::cout, 0) << "\n";
+    a = Tensor({{3, 3, 3}, LAYOUT_UNKNOWN}, CV_32F);
+    float* adataf = a.ptr<float>();
+    for (int i = 0; i < 3*3*3; i++)
+        adataf[i] = CV_PI*0.03f*i;
+    Op sinop = ElemwiseOp::create(ELWISE_SIN);
+    sinop->forward(net, g, {a}, c, tmp);
+    c[0].dump(std::cout, 0) << "\n";
+}
+
+void test_reduce()
+{
+    int N = 2, m = 3, n = 4;
+    printf("=========== ELEMWISE OP TEST ===========\n");
+    Tensor a({{N, m, n}, LAYOUT_UNKNOWN}, CV_32S);
+    std::vector<int> a0 = {0}, a1 = {1}, aL={-1};
+    Tensor axes[] = {
+        Tensor::makeVector(a0),
+        Tensor::makeVector(a1),
+        Tensor::makeVector(aL),
+        Tensor()
+    };
+    std::vector<Tensor> c;
+    std::vector<Buffer> tmp;
+    int* adata = a.ptr<int>();
+
+    for (int i = 0; i < N*m*n; i++) {
+        adata[i] = i;
+    }
+    Net2 net;
+    Graph g = net.newGraph("main", {}, {}, true);
+    Op reduce_ops[] = {
+        ReduceOp::create(REDUCE_SUM, false),
+        ReduceOp::create(REDUCE_MAX, false),
+        ReduceOp::create(REDUCE_MIN, false)
+    };
+
+    std::cout << "input: ";
+    a.dump(std::cout, 0) << "\n";
+    std::cout << "==============================\n";
+
+    for (int i = 0; i < 12; i++) {
+        int opidx = i / 4;
+        int aidx = i % 4;
+        Op op = reduce_ops[opidx];
+        Tensor axes_i = axes[aidx];
+        op->forward(net, g, {a, axes_i}, c, tmp);
+        std::cout << "op: " << op->name() << "\n";
+        std::cout << "axes: ";
+        axes_i.dump(std::cout, 0) << "\n";
+        std::cout << "result: ";
+        c[0].dump(std::cout, 0) << "\n";
+        std::cout << "------------------------------\n";
+    }
+}
+
+void test_0d()
+{
+    Mat m(0, nullptr, CV_64F);
+    Mat m2 = m;
+    printf("m.dims=%d, m.rows=%d, m.cols=%d, m.type=%d, m.empty()=%d, m.total()=%zu\n", m2.dims, m2.rows, m2.cols, m2.type(), m2.empty(), m2.total());
 }
 
 }}

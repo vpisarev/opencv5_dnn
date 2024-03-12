@@ -42,8 +42,8 @@ Node NodeData::clone(Net2* newnet) const
     return node;
 }
 
-void NodeData::dump(const Net2& net, std::ostream& strm,
-                    int indent, bool comma) const
+std::ostream& NodeData::dump(const Net2& net, std::ostream& strm,
+                             int indent, bool comma) const
 {
     size_t ninputs = inputs_.size(), noutputs = outputs_.size();
     size_t ngraphs = subgraphs_.size();
@@ -90,9 +90,11 @@ void NodeData::dump(const Net2& net, std::ostream& strm,
         }
     }
     prindent(strm, indent);
+    strm << '}';
     if (comma)
         strm << ',';
     strm << '\n';
+    return strm;
 }
 
 
@@ -153,7 +155,7 @@ Arg GraphData::append(std::string_view node_name, const Op& op,
 
 bool GraphData::isPattern() const { return ispattern_; }
 
-void GraphData::dump(std::ostream& strm, int indent, bool comma)
+std::ostream& GraphData::dump(std::ostream& strm, int indent, bool comma)
 {
     size_t ninputs = inputs_.size(), noutputs = outputs_.size();
     int delta_indent = net_ ? net_->indent() : 3;
@@ -192,10 +194,11 @@ void GraphData::dump(std::ostream& strm, int indent, bool comma)
     prindent(strm, subindent);
     strm << "]\n";
     prindent(strm, indent);
-    strm << "}";
+    strm << '}';
     if (comma)
-        strm << ",";
-    strm << "\n";
+        strm << ',';
+    strm << '\n';
+    return strm;
 }
 
 void GraphData::inferShapes(const std::vector<SizeType>& inpst,
