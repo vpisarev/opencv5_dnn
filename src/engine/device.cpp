@@ -28,8 +28,12 @@ struct CPUMemoryManager : MemoryManager
     void copyWithinDevice(Device* device, const void* srchandle, size_t srcoffset,
                           void* dsthandle, size_t dstoffset, size_t size) CV_OVERRIDE
     {
-        if (size > 0)
-            memcpy((char*)dsthandle + dstoffset, (char*)srchandle + srcoffset, size);
+        if (size > 0) {
+            char* srcptr = (char*)srchandle + srcoffset;
+            char* dstptr = (char*)dsthandle + dstoffset;
+            if (dstptr != srcptr)
+                memcpy(dstptr, srcptr, size);
+        }
     }
     void fill(Device* device, void* handle, size_t offset,
               size_t nelems, const void* value, size_t vsize) CV_OVERRIDE

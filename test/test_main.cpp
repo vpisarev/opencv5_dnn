@@ -9,5 +9,6 @@ int main(int, char**)
     //cv::dnn::test_tensor_basic();
     //cv::dnn::test_elemwise();
     //cv::dnn::test_0d();
-    cv::dnn::test_reduce();
+    //cv::dnn::test_reduce();
+    cv::dnn::test_transform_layout();
 }

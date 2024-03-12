@@ -875,6 +875,22 @@ CV_EXPORTS Arg topK(Graph& graph, std::string_view opname,
                     int axis=-1, bool largest=true, bool sorted=true);
 
 /*
+    TransformLayout
+*/
+struct CV_EXPORTS TransformLayoutOp : public BaseOp
+{
+    static Op create(TensorLayout layout, int64_t C0=0);
+    virtual ~TransformLayoutOp();
+
+    TensorLayout layout;
+    int64_t C0;
+};
+
+CV_EXPORTS Arg transformLayout(Graph& graph, std::string_view opname,
+                               std::string_view outname, Arg input,
+                               TensorLayout layout, int64_t C0=0);
+
+/*
     Transpose
 */
 struct CV_EXPORTS TransposeOp : public BaseOp

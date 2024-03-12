@@ -569,7 +569,10 @@ void Tensor::copyTo(Tensor& tensor) const
     if (nbytes == 0)
         return;
     if (srcdev->isCPU() && dstdev->isCPU()) {
-        memcpy(tensor.data(), data(), nbytes);
+        void* dstptr = tensor.data();
+        const void* srcptr = data();
+        if (nbytes > 0 && dstptr != srcptr)
+            memcpy(dstptr, srcptr, nbytes);
     } else if (srcdev->isSameDevice(dstdev)) {
         memoryManager()->copyWithinDevice(srcdev, handle(), slice_start_,
                                           tensor.handle(), tensor.slice_start_, nbytes);
