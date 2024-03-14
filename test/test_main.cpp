@@ -13,4 +13,5 @@ int main(int, char**)
     //cv::dnn::test_reduce();
     //cv::dnn::test_transform_layout();
     cv::dnn::test_squeeze();
+    cv::dnn::test_unsqueeze();
 }

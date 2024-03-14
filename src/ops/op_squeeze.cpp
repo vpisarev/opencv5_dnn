@@ -94,7 +94,8 @@ public:
         outst.resize(1);
 
         const TensorSize& inpsize = inpst[0].size;
-        const Tensor& axes = net.argTensor(inpargs[1]);
+        Tensor no_axes;
+        const Tensor& axes = inpargs.size() > 1 ? net.argTensor(inpargs[1]) : no_axes;
         outst[0].size = inferShapes_(inpsize, axes);
         outst[0].type = inferType(inpst[0].type);
         tempbufs.assign(1, (size_t)0);
@@ -112,7 +113,7 @@ public:
 
         int inptype = inp.type(), outtype = inferType(inptype);
         TensorSize inpsize = inp.size();
-        TensorSize outsize = inferShapes_(inpsize, inputs[1]);
+        TensorSize outsize = inferShapes_(inpsize, inputs.size() > 1 ? inputs[1] : Tensor());
         outputs.resize(1);
         Tensor& out = outputs[0];
         out.fitSameDevice(inp, outsize, outtype);

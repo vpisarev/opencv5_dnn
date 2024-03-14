@@ -19,6 +19,7 @@ void test_reduce();
 void test_tensor_basic();
 void test_transform_layout();
 void test_squeeze();
+void test_unsqueeze();
 
 }
 }

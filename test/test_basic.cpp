@@ -218,8 +218,37 @@ void test_squeeze()
 
     Op op0 = SqueezeOp::create();
 
-    op0->forward(net, g, {a, Tensor()}, c0, tmp);
+    op0->forward(net, g, {a}, c0, tmp);
     std::cout << "output0 (squeeze all 1's in the shape): ";
+    c0[0].dump(std::cout, 0) << "\n-----------------------\n";
+}
+
+void test_unsqueeze()
+{
+    int N = 2, m = 3;
+    printf("=========== UNSQUEEZE TEST ===========\n");
+    Tensor a({{N, m}, LAYOUT_NCHW}, CV_32S);
+    std::vector<int> axesbuf = {0, -1};
+    Tensor axes = Tensor::makeVector(axesbuf);
+    std::vector<Tensor> c0;
+    std::vector<Buffer> tmp;
+    int* adata = a.ptr<int>();
+
+    for (int i = 0; i < N*m; i++) {
+        adata[i] = i;
+    }
+    Net2 net;
+    Graph g = net.newGraph("main", {}, {}, true);
+
+    std::cout << "input: ";
+    a.dump(std::cout, 0) << "\n";
+    std::cout << "==============================\n";
+
+    Op op0 = UnsqueezeOp::create();
+
+    op0->forward(net, g, {a, axes}, c0, tmp);
+    std::cout << "output0 (unsqueeze): shape=";
+    c0[0].sizetype().dump(std::cout) << ", data: ";
     c0[0].dump(std::cout, 0) << "\n-----------------------\n";
 }
 

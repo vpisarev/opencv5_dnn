@@ -841,7 +841,7 @@ struct CV_EXPORTS SqueezeOp : public BaseOp
 };
 
 CV_EXPORTS Arg squeeze(Graph& graph, std::string_view opname,
-                       std::string_view outname, Arg input, Arg axes);
+                       std::string_view outname, Arg input, Arg axes=Arg());
 
 
 /*
@@ -910,7 +910,7 @@ CV_EXPORTS Arg transpose(Graph& graph, std::string_view opname, std::string_view
 */
 struct CV_EXPORTS UnsqueezeOp : public BaseOp
 {
-    static Op create(const std::vector<int>& perm);
+    static Op create();
     virtual ~UnsqueezeOp();
 };
 
