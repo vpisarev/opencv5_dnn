@@ -223,7 +223,7 @@ static void elemwise_leaky_relu_32f(size_t ninputs, const void** inptr_, const s
     float* outptr = (float*)outptr_;
     for (size_t j = 0; j < len; j++) {
         float x = inptr[j];
-        outptr[j] = (float)(x*(x < 0 ? alpha : 1.f));
+        outptr[j] = (float)(x*(x < 0.f ? alpha : 1.f));
     }
 }
 
@@ -236,7 +236,7 @@ static void elemwise_leaky_relu_16f(size_t ninputs, const void** inptr_, const s
     cv::float16_t* outptr = (cv::float16_t*)outptr_;
     for (size_t j = 0; j < len; j++) {
         float x = (float)inptr[j];
-        outptr[j] = cv::float16_t(x*(x < 0 ? alpha : 1.f));
+        outptr[j] = cv::float16_t(x*(x < 0.f ? alpha : 1.f));
     }
 }
 
@@ -701,8 +701,7 @@ public:
 
     virtual bool alwaysSupportInplace() const CV_OVERRIDE
     {
-        int inptype = CV_32F;
-        return opcode == ELWISE_CLIP || (maxNumInputs() == 1 && inferType(inptype) == CV_32F);
+        return opcode == ELWISE_CLIP || (maxNumInputs() == 1 && inferType(CV_32F) == CV_32F);
     }
 
     virtual int64_t getFLOPS(const std::vector<SizeType> &inputs,

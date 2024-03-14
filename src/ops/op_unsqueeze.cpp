@@ -110,14 +110,7 @@ public:
         TensorSize inpsize = inp.size();
         TensorSize outsize = inferShapes_(inpsize, inputs[1]);
         outputs.resize(1);
-        Tensor& out = outputs[0];
-        out.fitSameDevice(inp, outsize, outtype);
-        CV_Assert(out.isContinuous());
-
-        if (inp.samePlace(out))
-            return;
-
-        inp.reshape(outsize).copyTo(out);
+        inp.reshape(outsize).copyTo(outputs[0]);
     }
 };
 

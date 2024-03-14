@@ -134,6 +134,34 @@ void test_reduce()
     }
 }
 
+void test_reshape()
+{
+    int N = 2, m = 3, n = 4;
+    printf("=========== RESHAPE TEST ===========\n");
+    Tensor a({{N, m, n}, LAYOUT_UNKNOWN}, CV_32S);
+    std::vector<int> shapevec = {0, 1, -1};
+    Tensor shape = Tensor::makeVector(shapevec);
+    std::vector<Tensor> c;
+    std::vector<Buffer> tmp;
+    int* adata = a.ptr<int>();
+
+    for (int i = 0; i < N*m*n; i++) {
+        adata[i] = i;
+    }
+    Net2 net;
+    Graph g = net.newGraph("main", {}, {}, true);
+    Op op = ReshapeOp::create(false);
+
+    std::cout << "input: ";
+    a.dump(std::cout, 0) << "\n";
+    std::cout << "==============================\n";
+
+    op->forward(net, g, {a, shape}, c, tmp);
+    std::cout << "result (shape = ";
+    c[0].sizetype().dump(std::cout) << "): ";
+    c[0].dump(std::cout, 0) << "\n";
+}
+
 
 void test_tensor_basic()
 {
