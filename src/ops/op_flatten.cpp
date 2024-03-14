@@ -53,7 +53,6 @@ public:
     TensorSize inferShapes_(const TensorSize& inpsize) const
     {
         int ndims = inpsize.ndims;
-        TensorLayout inplayout = inpsize.layout;
         
         CV_Assert(inpsize.layout != LAYOUT_NCHWc);
         CV_Assert(ndims >= 1);
@@ -124,4 +123,3 @@ Op FlattenOp::create(int axis)
 }
 
 }}
-

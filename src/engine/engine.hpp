@@ -110,7 +110,13 @@ int prepareForBroadcasting(int ntensors, const TensorSize* sizes0,
 bool isIntType(int type);
 bool isSignedIntType(int type);
 bool isFPType(int type);
+
+// normalize axis. The input axis should be within [-ndims, ndims-1] range
 int normalizeAxis(int axis, int ndims);
+
+// extract array of axes (up to TensorSize::MAX_DIMS).
+// Each axis should be within a range [-ndims, ndims-1]
+int normalizeAxes(const Tensor& axes, int ndims, int* axisbuf, bool* axismask=nullptr);
 
 void prindent(std::ostream& strm, int indent);
 

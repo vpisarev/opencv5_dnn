@@ -507,7 +507,7 @@ bool Tensor::empty() const { return size_.empty(); }
 void* Tensor::handle() const { return buf_ ? buf_->handle() : nullptr; }
 size_t Tensor::sliceStart() const { return slice_start_; }
 size_t Tensor::sliceMaxSize() const { return slice_maxsize_; }
-int Tensor::dims() const { return size_.ndims; }
+int Tensor::ndims() const { return size_.ndims; }
 TensorSize Tensor::size() const { return size_; }
 SizeType Tensor::sizetype() const { return SizeType({size_, type_}); }
 TensorLayout Tensor::layout() const { return size_.layout; }

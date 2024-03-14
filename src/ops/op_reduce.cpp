@@ -251,27 +251,16 @@ public:
     int inferShapes_(const TensorSize& inpsize, const Tensor& axes_, int* axes,
                      TensorSize& outsize, TensorSize& outsize_kd, bool* reduce_mask) const
     {
-        int axistype = axes_.empty() ? CV_64S : axes_.type();
         int inp_ndims = inpsize.ndims;
         CV_Assert(0 <= inp_ndims && inp_ndims <= TensorSize::MAX_DIMS);
-        CV_Assert(axistype == CV_32S || axistype == CV_64S);
-        CV_Assert(axes_.isContinuous());
-        int naxes = (int)axes_.total();
-        if (naxes == 0 && !noOpWithEmptyAxes)
-            naxes = inpsize.ndims;
-        const int* axes32 = (const int*)axes_.data();
-        const int64_t* axes64 = (const int64_t*)axes_.data();
-        for (int k = 0; k < inp_ndims; k++)
-            reduce_mask[k] = false;
 
-        for (int k = 0; k < naxes; k++) {
-            int axis = axistype == CV_32S ? (int)axes32[k] : axes64 ? (int)axes64[k] : k;
-            axis = normalizeAxis(axis, inp_ndims);
-            if (reduce_mask[axis]) {
-                CV_Error(Error::StsError, "there are duplicated axes in the axes specification in Reduce op");
+        int naxes = normalizeAxes(axes_, inp_ndims, axes, reduce_mask);
+        if (naxes == 0 && !noOpWithEmptyAxes) {
+            for (int k = 0; k < inp_ndims; k++) {
+                reduce_mask[k] = true;
+                axes[k] = k;
             }
-            reduce_mask[axis] = true;
-            axes[k] = axis;
+            naxes = inp_ndims;
         }
 
         int k1 = 0, out_ndims = keepdims ? inp_ndims : inp_ndims - (int)naxes;

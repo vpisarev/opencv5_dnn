@@ -207,7 +207,7 @@ public:
     // return pointer in the host memory. When tensor is not on the host, exception is thrown.
     void* data() const;
     template<typename _Tp> _Tp* ptr() const { return (_Tp*)data(); }
-    int dims() const;
+    int ndims() const;
     TensorSize size() const;
     SizeType sizetype() const;
     TensorLayout layout() const;

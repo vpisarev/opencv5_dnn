@@ -197,4 +197,30 @@ void test_transform_layout()
     c3[0].dump(std::cout, 0) << "\n-----------------------\n";
 }
 
+void test_squeeze()
+{
+    int N = 2, m = 3, n = 1;
+    printf("=========== SQUEEZE TEST ===========\n");
+    Tensor a({{N, m, n}, LAYOUT_NCHW}, CV_32S);
+    std::vector<Tensor> c0;
+    std::vector<Buffer> tmp;
+    int* adata = a.ptr<int>();
+
+    for (int i = 0; i < N*m*n; i++) {
+        adata[i] = i;
+    }
+    Net2 net;
+    Graph g = net.newGraph("main", {}, {}, true);
+
+    std::cout << "input: ";
+    a.dump(std::cout, 0) << "\n";
+    std::cout << "==============================\n";
+
+    Op op0 = SqueezeOp::create();
+
+    op0->forward(net, g, {a, Tensor()}, c0, tmp);
+    std::cout << "output0 (squeeze all 1's in the shape): ";
+    c0[0].dump(std::cout, 0) << "\n-----------------------\n";
+}
+
 }}
