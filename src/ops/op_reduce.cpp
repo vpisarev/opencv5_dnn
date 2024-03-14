@@ -265,15 +265,13 @@ public:
             reduce_mask[k] = false;
 
         for (int k = 0; k < naxes; k++) {
-            int64_t axis = axistype == CV_32S ? (int64_t)axes32[k] : axes64 ? axes64[k] : (int64_t)k;
-            if (axis < 0)
-                axis += inp_ndims;
-            CV_Assert(0 <= axis && axis < (int64_t)inp_ndims);
+            int axis = axistype == CV_32S ? (int)axes32[k] : axes64 ? (int)axes64[k] : k;
+            axis = normalizeAxis(axis, inp_ndims);
             if (reduce_mask[axis]) {
                 CV_Error(Error::StsError, "there are duplicated axes in the axes specification in Reduce op");
             }
             reduce_mask[axis] = true;
-            axes[k] = (int)axis;
+            axes[k] = axis;
         }
 
         int k1 = 0, out_ndims = keepdims ? inp_ndims : inp_ndims - (int)naxes;

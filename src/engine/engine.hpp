@@ -110,6 +110,7 @@ int prepareForBroadcasting(int ntensors, const TensorSize* sizes0,
 bool isIntType(int type);
 bool isSignedIntType(int type);
 bool isFPType(int type);
+int normalizeAxis(int axis, int ndims);
 
 void prindent(std::ostream& strm, int indent);
 

@@ -25,4 +25,12 @@ bool isFPType(int type)
     return depth == CV_32F || depth == CV_64F || depth == CV_16F || depth == CV_16BF;
 }
 
+int normalizeAxis(int axis, int ndims)
+{
+    if (axis < 0)
+        axis += ndims;
+    CV_Assert(0 <= axis && axis < ndims);
+    return axis;
+}
+
 }}

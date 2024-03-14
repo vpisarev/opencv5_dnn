@@ -55,6 +55,38 @@ void test_elemwise()
     c[0].dump(std::cout, 0) << "\n";
 }
 
+void test_flatten()
+{
+    int N = 2, m = 3, n = 4;
+    printf("=========== FLATTEN TEST ===========\n");
+    Tensor a({{N, m, n}, LAYOUT_NCHW}, CV_32S);
+    std::vector<Tensor> c0, c1 = {a};
+    std::vector<Buffer> tmp;
+    int* adata = a.ptr<int>();
+
+    for (int i = 0; i < N*m*n; i++) {
+        adata[i] = i;
+    }
+    Net2 net;
+    Graph g = net.newGraph("main", {}, {}, true);
+
+    std::cout << "input: ";
+    a.dump(std::cout, 0) << "\n";
+    std::cout << "==============================\n";
+
+    Op op0 = FlattenOp::create();
+
+    op0->forward(net, g, {a}, c1, tmp);
+    std::cout << "output0 (after inplace Flatten {axis=1}): ";
+    c1[0].dump(std::cout, 0) << "\n-----------------------\n";
+
+    CV_Assert(a.handle() == c1[0].handle());
+
+    op0->forward(net, g, {a}, c0, tmp);
+    std::cout << "output0 (after Flatten {axis=1}): ";
+    c0[0].dump(std::cout, 0) << "\n-----------------------\n";
+}
+
 
 void test_reduce()
 {

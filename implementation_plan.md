@@ -6,7 +6,7 @@
 - [+/-] define the new API for model and graph construction out of operations
 - [+/-] add functions to dump graphs
 - [ ] create onnx parser, test it
-- [ ] add api for shape & type inference with block layout support
+- [+/-] add api for shape & type inference with block layout support
 - [+/-] add API for backends
 - [ ] implement api for shape & type inference for a few basic ops, test it
 - [ ] implement constant folding

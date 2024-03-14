@@ -418,6 +418,14 @@ bool Tensor::isOnSameDevice(const Tensor& tensor)
     return device()->isSameDevice(tensor.device());
 }
 
+bool Tensor::samePlace(const Tensor& t) const
+{
+    return device()->isSameDevice(t.device()) &&
+        ((ext_data_ == nullptr && handle() == t.handle()) ||
+         (ext_data_ != nullptr && ext_data_ == t.ext_data_)) &&
+         slice_start_ == t.slice_start_;
+}
+
 void Tensor::setData(const TensorSize& size, int type, void* data, bool copy, Device* device)
 {
     type_ = CV_MAT_TYPE(type);
@@ -497,6 +505,8 @@ size_t Tensor::totalBytes() const { return size_.total()*elementSize(); }
 size_t Tensor::elementSize() const { return CV_ELEM_SIZE(type_); }
 bool Tensor::empty() const { return size_.empty(); }
 void* Tensor::handle() const { return buf_ ? buf_->handle() : nullptr; }
+size_t Tensor::sliceStart() const { return slice_start_; }
+size_t Tensor::sliceMaxSize() const { return slice_maxsize_; }
 int Tensor::dims() const { return size_.ndims; }
 TensorSize Tensor::size() const { return size_; }
 SizeType Tensor::sizetype() const { return SizeType({size_, type_}); }
@@ -507,7 +517,7 @@ int Tensor::channels() const { return CV_MAT_CN(type_); }
 
 void* Tensor::data() const
 {
-    void* dataptr = buf_ ? buf_->hostPtr() : ext_data_;
+    void* dataptr = (char*)(buf_ ? buf_->hostPtr() : ext_data_) + slice_start_;
     CV_Assert(dataptr != 0 || empty()); // make sure the tensor is "mapped" to memory
     return dataptr;
 }
@@ -655,6 +665,25 @@ void Tensor::setTo(int vtype, const void* value0)
 
     cvtScalar(vtype, value0, type_, value, temp, MAX_CN);
     memoryManager()->fill(device(), handle(), slice_start_, total(), value, elementSize());
+}
+
+Tensor Tensor::reshape(const TensorSize& newsize) const
+{
+    Tensor t = *this;
+    CV_Assert(isContinuous());
+    CV_Assert(newsize.total() == size_.total());
+
+    t.size_ = newsize;
+    return t;
+}
+
+Tensor Tensor::reinterpret(int newtype) const
+{
+    Tensor t = *this;
+    CV_Assert(empty() || (CV_ELEM_SIZE(newtype) == CV_ELEM_SIZE(type_)));
+
+    t.type_ = newtype;
+    return t;
 }
 
 template<typename _Tp> struct Fmt

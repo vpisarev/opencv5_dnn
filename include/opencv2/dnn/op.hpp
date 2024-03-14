@@ -466,14 +466,14 @@ CV_EXPORTS Arg expand(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS FlattenOp : public BaseOp
 {
-    static Op create();
+    static Op create(int axis=1);
     virtual ~FlattenOp();
 
     int axis;
 };
 
 CV_EXPORTS Arg flatten(Graph& graph, std::string_view opname,
-                       std::string_view outname, Arg input);
+                       std::string_view outname, Arg input, int axis=1);
 
 /*
     Gather

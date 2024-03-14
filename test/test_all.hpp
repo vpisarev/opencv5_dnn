@@ -14,6 +14,7 @@ namespace dnn {
 
 void test_0d();
 void test_elemwise();
+void test_flatten();
 void test_reduce();
 void test_tensor_basic();
 void test_transform_layout();

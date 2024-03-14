@@ -183,6 +183,7 @@ public:
     void fit(const TensorSize& size, int type);
     void fitSameDevice(const Tensor& tensor, const TensorSize& size, int type);
     bool isOnSameDevice(const Tensor& tensor);
+    bool samePlace(const Tensor& another) const;
     void setData(const TensorSize& size, int type, void* data, bool copy, Device* device);
     void setData(InputArray arr, TensorLayout layout, bool copy, Device* device);
     void setBuffer(const Buffer& buffer);
@@ -201,6 +202,8 @@ public:
     bool empty() const;
     // return pointer in device memory. When tensor is on the host, handle() == data().
     void* handle() const;
+    size_t sliceStart() const;
+    size_t sliceMaxSize() const;
     // return pointer in the host memory. When tensor is not on the host, exception is thrown.
     void* data() const;
     template<typename _Tp> _Tp* ptr() const { return (_Tp*)data(); }
@@ -221,6 +224,11 @@ public:
     template<typename _Tp> void setTo(_Tp value) {
         setTo(DataType<_Tp>::type, &value);
     }
+    Tensor reshape(const TensorSize& size) const;
+    Tensor reinterpret(int type) const;
+    template<typename _Tp> Tensor reinterpret() const
+    { return reinterpret(DataType<_Tp>::type); }
+
     void* map(BufAccess access=DNN_BUF_RW);
     void unmap(BufAccess access=DNN_BUF_RW);
 
