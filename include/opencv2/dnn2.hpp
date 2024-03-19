@@ -477,14 +477,12 @@ public:
     // creates a new empty graph with the inputs and outputs.
     Graph newGraph(std::string_view name,
                    const std::vector<std::string>& inpnames,
-                   const std::vector<std::string>& outnames,
-                   bool maingraph) const;
+                   const std::vector<std::string>& outnames) const;
     // mode 2: we construct the graph manually.
     // First, we create empty graph with certain input Args (they may or may not have names).
     // once the graph is constructed, we set the graph outputs using Graph::setOutputs().
     Graph newGraph(std::string_view name,
-                   const std::vector<Arg>& inputs,
-                   bool maingraph) const;
+                   const std::vector<Arg>& inputs) const;
     Graph newPatternGraph(std::string_view name,
                           const std::vector<Arg>& inputs) const;
     Graph getMainGraph() const;

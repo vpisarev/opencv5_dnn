@@ -182,10 +182,10 @@ void Net2::getProfile(std::vector<std::string>& opnames,
 
 Graph Net2::newGraph(std::string_view name,
                      const std::vector<std::string>& inpnames,
-                     const std::vector<std::string>& outnames,
-                     bool maingraph) const
+                     const std::vector<std::string>& outnames) const
 {
     std::vector<Arg> inputs, outputs;
+    bool maingraph = !p->mainGraph;
     for (std::string_view inpname : inpnames) {
         CV_Assert(!inpname.empty());
         inputs.push_back(newArg(inpname, (maingraph ? DNN_ARG_INPUT : DNN_ARG_TEMP)));
@@ -196,19 +196,23 @@ Graph Net2::newGraph(std::string_view name,
     }
     Graph g = std::make_shared<GraphData>(*this, name, inputs, false);
     g->setOutputs(outputs);
+    if (maingraph)
+        p->mainGraph = g;
 
     return g;
 }
 
 Graph Net2::newGraph(std::string_view name,
-                     const std::vector<Arg>& inputs,
-                     bool maingraph) const
+                     const std::vector<Arg>& inputs) const
 {
+    bool maingraph = !p->mainGraph;
     for (Arg inp : inputs) {
         ArgKind inp_kind = argKind(inp);
         CV_Assert(inp_kind == (maingraph ? DNN_ARG_INPUT : DNN_ARG_TEMP));
     }
     Graph g = std::make_shared<GraphData>(*this, name, inputs, false);
+    if (maingraph)
+        p->mainGraph = g;
 
     return g;
 }
