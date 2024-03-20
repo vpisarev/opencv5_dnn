@@ -287,10 +287,10 @@ CV_EXPORTS Arg reduceSumSquare(Graph& graph, std::string_view opname,
 
 struct CV_EXPORTS ConvParams
 {
-    std::vector<int> size;
-    std::vector<int> stride={};
-    std::vector<int> dilation={};
-    std::vector<int> padding={};
+    std::vector<int> ksizes;
+    std::vector<int> strides={};
+    std::vector<int> dilations={};
+    std::vector<int> pads={};
 };
 
 /*

@@ -8,15 +8,12 @@
 
 namespace cv { namespace dnn {
 
-GlobalAveragePoolOp::~GlobalAveragePoolOp() {}
-
 static void global_average_pool_32f(const void* inp_, const TensorSize& size, void* out_)
 {
     CV_Assert(size.layout == LAYOUT_NCHWc);
     int ndims = size.ndims;
-    int64_t N = size.size[0], C1 = size.size[1], C0_ = size.size[ndims-1], C = size.C;
+    int64_t N = size.size[0], C1 = size.size[1], C0_ = size.size[ndims-1];
     int nlanes_ = (int)VTraits<v_float32>::vlanes();
-    CV_Assert(C == C1*C0_);
     CV_Assert(C0_ == nlanes_ || C0_ == nlanes_*2 || C0_ % (nlanes_*4) == 0);
     int64_t planesize = 1;
     N *= C1;
@@ -264,9 +261,6 @@ public:
         TensorSize outsize = inpsize;
         CV_Assert(inplayout == LAYOUT_NCHWc);
 
-        outsize.ndims = ndims-1;
-        outsize.layout = LAYOUT_NCHW;
-        outsize.size[1] = inpsize.C;
         for (int i = 2; i < ndims-1; i++)
             outsize.size[i] = 1;
         return outsize;
@@ -326,11 +320,11 @@ public:
     }
 };
 
+GlobalAveragePoolOp::~GlobalAveragePoolOp() {}
+
 Op GlobalAveragePoolOp::create()
 {
     return std::make_shared<GlobalAveragePoolOpImpl>();
 }
 
 }}
-
-

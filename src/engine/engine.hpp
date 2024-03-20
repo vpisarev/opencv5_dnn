@@ -118,6 +118,26 @@ int normalizeAxis(int axis, int ndims);
 // Each axis should be within a range [-ndims, ndims-1]
 int normalizeAxes(const Tensor& axes, int ndims, int* axisbuf, bool* axismask=nullptr);
 
+// computes shape of the output tensor of convolution
+// (including depth-wise convolution), max pooling or average pooling operations
+TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparams);
+
+struct DepthwiseConvParams
+{
+    int64_t KH, KW, SY, SX, DY, DX;
+    int64_t pad_y0, pad_x0, pad_y1, pad_x1;
+    int64_t N, Hi, Wi, H, W, C1, C0;
+    int64_t inner_y0, inner_x0, inner_y1, inner_x1;
+    const int* yxtab;
+    const int64_t* ofstab;
+};
+
+// initializes the structure of parameters for 1D/2D/3D
+// depth-wise convolution, max pooling or average pooling
+DepthwiseConvParams initDepthwiseConv(const TensorSize& inpsize,
+                                      const ConvParams& convparams,
+                                      int* yxtab, int64_t* ofstab);
+
 void prindent(std::ostream& strm, int indent);
 
 }}

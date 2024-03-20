@@ -71,4 +71,132 @@ int normalizeAxes(const Tensor& axes, int ndims, int* axisbuf, bool* axismask_)
     return (int)naxes;
 }
 
+TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparams)
+{
+    CV_Assert(inpsize.layout == LAYOUT_NCHWc);
+
+    int ndims = inpsize.ndims;
+    size_t nspatialdims = (size_t)(ndims - 3);
+    TensorSize outsize = inpsize;
+
+    CV_Assert(convparams.ksizes.size() == nspatialdims);
+    CV_Assert(convparams.strides.empty() || convparams.strides.size() == nspatialdims);
+    CV_Assert(convparams.dilations.empty() || convparams.dilations.size() == nspatialdims);
+    CV_Assert(convparams.pads.empty() || convparams.pads.size() == nspatialdims*2);
+
+    for (size_t i = 0; i < nspatialdims; i++) {
+        int ksize = convparams.ksizes[i];
+        int stride = convparams.strides.empty() ? 1 : convparams.strides[i];
+        int dilation = convparams.dilations.empty() ? 1 : convparams.dilations[i];
+        int pad_before = 0, pad_after = 0;
+        if (!convparams.pads.empty()) {
+            pad_before = convparams.pads[i];
+            pad_after = convparams.pads[i + nspatialdims];
+        }
+        outsize.size[i+2] = (inpsize.size[i+2] + pad_before + pad_after - dilation * (ksize - 1) - 1) / stride + 1;
+        CV_Assert(outsize.size[i+2] >= 0);
+    }
+
+    return outsize;
+}
+
+
+static void calcKernelOffsets2D(int64_t Wi, int64_t KH, int64_t KW,
+                                int64_t DY, int64_t DX,
+                                int* yxtab, int64_t* ofstab)
+{
+    for (int64_t y = 0; y < KH; y++)
+        for (int64_t x = 0; x < KW; x++) {
+            int64_t k = y*KW + x;
+            int64_t dy = y*DY, dx = x*DX;
+            yxtab[k*2] = (int)dy; yxtab[k*2+1] = (int)dx;
+            ofstab[k] = dy*Wi + dx;
+        }
+}
+
+DepthwiseConvParams initDepthwiseConv(const TensorSize& inpsize,
+                                      const ConvParams& convparams,
+                                      int* yxtab, int64_t* ofstab)
+{
+    DepthwiseConvParams dwparams;
+    TensorSize outsize = convInferShape(inpsize, convparams);
+
+    int ndims = inpsize.ndims;
+    size_t nspatialdims = ndims - 3;
+
+    CV_Assert(inpsize.layout == LAYOUT_NCHWc);
+    CV_Assert(1 <= nspatialdims && nspatialdims <= 2);
+    int64_t N = outsize.size[0];
+    int64_t C1 = outsize.size[1];
+    int64_t C0 = outsize.size[ndims-1];
+    int64_t W = outsize.size[ndims-2];
+    int64_t H = nspatialdims > 1 ? outsize.size[ndims-3] : 1;
+    int64_t Wi = inpsize.size[ndims-2];
+    int64_t Hi = nspatialdims > 1 ? inpsize.size[ndims-3] : 1;
+    int64_t SY = 1, SX = 1, DY = 1, DX = 1;
+    int64_t pad_y0 = 0, pad_x0 = 0, pad_y1 = 0, pad_x1 = 0;
+
+    int64_t KW = convparams.ksizes[nspatialdims-1];
+    int64_t KH = nspatialdims > 1 ? convparams.ksizes[nspatialdims-2] : 1;
+
+    if (!convparams.strides.empty()) {
+        SX = convparams.strides[nspatialdims-1];
+        SY = nspatialdims > 1 ? convparams.strides[nspatialdims-2] : 1;
+    }
+
+    if (!convparams.dilations.empty()) {
+        DX = convparams.dilations[nspatialdims-1];
+        DY = nspatialdims > 1 ? convparams.dilations[nspatialdims-2] : 1;
+    }
+
+    if (!convparams.pads.empty()) {
+        pad_x0 = convparams.pads[nspatialdims-1];
+        pad_x1 = convparams.pads[nspatialdims*2-1];
+        pad_y0 = nspatialdims > 1 ? convparams.pads[nspatialdims-2] : 0;
+        pad_y1 = nspatialdims > 1 ? convparams.pads[nspatialdims*2-2] : 0;
+    }
+
+    int64_t inner_y0 = (pad_y0 + SY - 1)/SY;
+    int64_t inner_x0 = (pad_x0 + SX - 1)/SX;
+
+    int64_t inner_y1 = (Hi - (KH - 1)*DY + pad_y0)/SY;
+    int64_t inner_x1 = (Wi - (KW - 1)*DX + pad_x0)/SX;
+
+    inner_y1 += inner_y1*SY - pad_y0 + (KH-1)*DY < Hi;
+    inner_x1 += inner_x1*SX - pad_x0 + (KW-1)*DX < Wi;
+
+    inner_y1 = std::min(inner_y1, H);
+    inner_x1 = std::min(inner_x1, W);
+
+    if (inner_y0 >= inner_y1 || inner_x0 >= inner_x1) {
+        inner_y0 = H;
+        inner_x0 = W;
+    }
+
+    calcKernelOffsets2D(Wi, KH, KW, DY, DX, yxtab, ofstab);
+
+    dwparams.KH = KH;
+    dwparams.KW = KW;
+    dwparams.SY = SY;
+    dwparams.SX = SX;
+    dwparams.DY = DY;
+    dwparams.DX = DX;
+
+    dwparams.N = N;
+    dwparams.C1 = C1;
+    dwparams.C0 = C0;
+    dwparams.H = H;
+    dwparams.W = W;
+    dwparams.Hi = Hi;
+    dwparams.Wi = Wi;
+
+    dwparams.inner_y0 = inner_y0;
+    dwparams.inner_x0 = inner_x0;
+    dwparams.inner_y1 = inner_y1;
+    dwparams.inner_x1 = inner_x1;
+
+    dwparams.yxtab = yxtab;
+    dwparams.ofstab = ofstab;
+}
+
 }}
