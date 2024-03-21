@@ -281,7 +281,6 @@ struct CV_EXPORTS ArgInfo
     int type;
 };
 
-
 struct CV_EXPORTS BaseOp
 {
 public:

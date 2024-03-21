@@ -130,6 +130,8 @@ struct DepthwiseConvParams
     int64_t inner_y0, inner_x0, inner_y1, inner_x1;
     const int* yxtab;
     const int64_t* ofstab;
+
+    std::ostream& dump(std::ostream& strm);
 };
 
 // initializes the structure of parameters for 1D/2D/3D

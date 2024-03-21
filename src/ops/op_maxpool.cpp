@@ -17,7 +17,7 @@ static void maxpool2d_32f(const void* inp_, void* out_, const DepthwiseConvParam
 
     int64_t NC = dwparams.N*dwparams.C1;
     int ksize_ = (int)(dwparams.KH*dwparams.KW);
-    AutoBuffer<int64_t> local_ofstab_buf(ksize_ + C0_);
+    AutoBuffer<int64_t> local_ofstab_buf(ksize_);
     int64_t* local_ofstab = local_ofstab_buf.data();
     for (int k = 0; k < ksize_; k++)
         local_ofstab[k] = dwparams.ofstab[k]*C0_;
@@ -156,7 +156,7 @@ static void maxpool2d_16(const _Tp* inp_, _Tp* out_, const DepthwiseConvParams& 
 
     int64_t NC = dwparams.N*dwparams.C1;
     int ksize_ = (int)(dwparams.KH*dwparams.KW);
-    AutoBuffer<int64_t> local_ofstab_buf(ksize_ + C0_);
+    AutoBuffer<int64_t> local_ofstab_buf(ksize_);
     int64_t* local_ofstab = local_ofstab_buf.data();
     for (int k = 0; k < ksize_; k++)
         local_ofstab[k] = dwparams.ofstab[k]*C0_;
@@ -417,4 +417,3 @@ Op MaxPoolOp::create(const ConvParams& params, bool computeIndices, bool rowMajo
 }
 
 }}
-

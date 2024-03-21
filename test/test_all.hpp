@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <iostream>
 #include "opencv2/dnn2.hpp"
+#include "test_utils.hpp"
 
 namespace cv {
 namespace dnn {
@@ -16,6 +17,7 @@ void test_0d();
 void test_elemwise();
 void test_flatten();
 void test_globavgpool();
+void test_maxpool();
 void test_reduce();
 void test_reshape();
 void test_tensor_basic();

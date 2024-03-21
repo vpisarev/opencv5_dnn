@@ -100,6 +100,42 @@ TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparam
     return outsize;
 }
 
+std::ostream& ConvParams::dump(std::ostream& strm)
+{
+    strm << "{ ksizes: {";
+    bool first = true;
+    for (auto ksz: ksizes) {
+        if (!first) strm << ", ";
+        strm << ksz;
+        first = false;
+    }
+
+    strm << "}, strides: {";
+    first = true;
+    for (auto ksz: strides) {
+        if (!first) strm << ", ";
+        strm << ksz;
+        first = false;
+    }
+
+    strm << "}, dilations: {";
+    first = true;
+    for (auto ksz: dilations) {
+        if (!first) strm << ", ";
+        strm << ksz;
+        first = false;
+    }
+
+    strm << "}, pads: {";
+    first = true;
+    for (auto ksz: pads) {
+        if (!first) strm << ", ";
+        strm << ksz;
+        first = false;
+    }
+    strm << "}}";
+    return strm;
+}
 
 static void calcKernelOffsets2D(int64_t Wi, int64_t KH, int64_t KW,
                                 int64_t DY, int64_t DX,
@@ -182,6 +218,11 @@ DepthwiseConvParams initDepthwiseConv(const TensorSize& inpsize,
     dwparams.DY = DY;
     dwparams.DX = DX;
 
+    dwparams.pad_y0 = pad_y0;
+    dwparams.pad_x0 = pad_x0;
+    dwparams.pad_y1 = pad_y1;
+    dwparams.pad_x1 = pad_x1;
+
     dwparams.N = N;
     dwparams.C1 = C1;
     dwparams.C0 = C0;
@@ -197,6 +238,20 @@ DepthwiseConvParams initDepthwiseConv(const TensorSize& inpsize,
 
     dwparams.yxtab = yxtab;
     dwparams.ofstab = ofstab;
+
+    return dwparams;
+}
+
+std::ostream& DepthwiseConvParams::dump(std::ostream& strm)
+{
+    strm << "{N=" << N << ", C1=" << C1 << ", C0=" << C0;
+    strm << ", H=" << H << ", W=" << W << ", Hi=" << Hi << ", Wi=" << Wi;
+    strm << ", KH=" << KH << ", KW=" << KW << ", SY=" << SY << ", SX=" << SX;
+    strm << ", DY=" << DY << ", DX=" << DX;
+    strm << ", pad_y0=" << pad_y0 << ", pad_x0=" << pad_x0;
+    strm << ", pad_y1=" << pad_y1 << ", pad_x1=" << pad_x1;
+    strm << "}";
+    return strm;
 }
 
 }}

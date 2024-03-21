@@ -291,6 +291,7 @@ struct CV_EXPORTS ConvParams
     std::vector<int> strides={};
     std::vector<int> dilations={};
     std::vector<int> pads={};
+    std::ostream& dump(std::ostream& strm);
 };
 
 /*
