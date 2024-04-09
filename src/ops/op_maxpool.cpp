@@ -8,35 +8,35 @@
 
 namespace cv { namespace dnn {
 
-static void maxpool2d_32f(const void* inp_, void* out_, const DepthwiseConvParams& dwparams)
+static void maxpool2d_32f(const void* inp_, void* out_, const ConvState& cs)
 {
     int nlanes_ = VTraits<v_float32>::vlanes();
-    int C0_ = (int)dwparams.C0;
+    int C0_ = (int)cs.C0;
 
     CV_Assert(C0_ == nlanes_ || C0_ == nlanes_*2 || C0_ % (nlanes_*4) == 0);
 
-    int64_t NC = dwparams.N*dwparams.C1;
-    int ksize_ = (int)(dwparams.KH*dwparams.KW);
+    int64_t NC = cs.N*cs.C1;
+    int ksize_ = (int)(cs.Hk*cs.Wk);
     AutoBuffer<int64_t> local_ofstab_buf(ksize_);
     int64_t* local_ofstab = local_ofstab_buf.data();
     for (int k = 0; k < ksize_; k++)
-        local_ofstab[k] = dwparams.ofstab[k]*C0_;
+        local_ofstab[k] = cs.ofstab[k]*C0_;
 
     parallel_for_(Range(0, (int)NC), [&](const Range& r) {
         int64_t nc0 = r.start, nc1 = r.end;
         int nlanes = nlanes_, C0 = C0_;
-        int64_t Hi = dwparams.Hi, Wi = dwparams.Wi;
-        int64_t H = dwparams.H, W = dwparams.W;
+        int64_t Hi = cs.Hi, Wi = cs.Wi;
+        int64_t H = cs.H, W = cs.W;
         int64_t iplanesize = Hi*Wi*C0;
         int64_t planesize = H*W*C0;
-        int64_t SY = dwparams.SY, SX = dwparams.SX;
-        int64_t DY = dwparams.DY, DX = dwparams.DX;
-        int64_t pad_y0 = dwparams.pad_y0, pad_x0 = dwparams.pad_x0;
-        int64_t pad_y1 = dwparams.pad_y1, pad_x1 = dwparams.pad_x1;
-        int64_t inner_y0 = dwparams.inner_y0, inner_y1 = dwparams.inner_y1;
-        int64_t inner_x0 = dwparams.inner_x0, inner_x1 = dwparams.inner_x1;
+        int64_t SY = cs.SY, SX = cs.SX;
+        int64_t DY = cs.DY, DX = cs.DX;
+        int64_t pad_y0 = cs.pad_y0, pad_x0 = cs.pad_x0;
+        int64_t pad_y1 = cs.pad_y1, pad_x1 = cs.pad_x1;
+        int64_t inner_y0 = cs.inner_y0, inner_y1 = cs.inner_y1;
+        int64_t inner_x0 = cs.inner_x0, inner_x1 = cs.inner_x1;
         int ksize = ksize_;
-        const int* yxtab = dwparams.yxtab;
+        const int* yxtab = cs.yxtab;
         const int64_t* ofstab = local_ofstab;
 
         const float* inp = (const float*)inp_ + nc0*iplanesize;
@@ -147,35 +147,35 @@ static void maxpool2d_32f(const void* inp_, void* out_, const DepthwiseConvParam
 }
 
 template<typename _Tp>
-static void maxpool2d_16(const _Tp* inp_, _Tp* out_, const DepthwiseConvParams& dwparams)
+static void maxpool2d_16(const _Tp* inp_, _Tp* out_, const ConvState& cs)
 {
     int nlanes_ = VTraits<v_float32>::vlanes();
-    int C0_ = (int)dwparams.C0;
+    int C0_ = (int)cs.C0;
 
     CV_Assert(C0_ == nlanes_ || C0_ == nlanes_*2 || C0_ % (nlanes_*4) == 0);
 
-    int64_t NC = dwparams.N*dwparams.C1;
-    int ksize_ = (int)(dwparams.KH*dwparams.KW);
+    int64_t NC = cs.N*cs.C1;
+    int ksize_ = (int)(cs.Hk*cs.Wk);
     AutoBuffer<int64_t> local_ofstab_buf(ksize_);
     int64_t* local_ofstab = local_ofstab_buf.data();
     for (int k = 0; k < ksize_; k++)
-        local_ofstab[k] = dwparams.ofstab[k]*C0_;
+        local_ofstab[k] = cs.ofstab[k]*C0_;
 
     parallel_for_(Range(0, (int)NC), [&](const Range& r) {
         int64_t nc0 = r.start, nc1 = r.end;
         int nlanes = nlanes_, C0 = C0_;
-        int64_t Hi = dwparams.Hi, Wi = dwparams.Wi;
-        int64_t H = dwparams.H, W = dwparams.W;
+        int64_t Hi = cs.Hi, Wi = cs.Wi;
+        int64_t H = cs.H, W = cs.W;
         int64_t iplanesize = Hi*Wi*C0;
         int64_t planesize = H*W*C0;
-        int64_t SY = dwparams.SY, SX = dwparams.SX;
-        int64_t DY = dwparams.DY, DX = dwparams.DX;
-        int64_t pad_y0 = dwparams.pad_y0, pad_x0 = dwparams.pad_x0;
-        int64_t pad_y1 = dwparams.pad_y1, pad_x1 = dwparams.pad_x1;
-        int64_t inner_y0 = dwparams.inner_y0, inner_y1 = dwparams.inner_y1;
-        int64_t inner_x0 = dwparams.inner_x0, inner_x1 = dwparams.inner_x1;
+        int64_t SY = cs.SY, SX = cs.SX;
+        int64_t DY = cs.DY, DX = cs.DX;
+        int64_t pad_y0 = cs.pad_y0, pad_x0 = cs.pad_x0;
+        int64_t pad_y1 = cs.pad_y1, pad_x1 = cs.pad_x1;
+        int64_t inner_y0 = cs.inner_y0, inner_y1 = cs.inner_y1;
+        int64_t inner_x0 = cs.inner_x0, inner_x1 = cs.inner_x1;
         int ksize = ksize_;
-        const int* yxtab = dwparams.yxtab;
+        const int* yxtab = cs.yxtab;
         const int64_t* ofstab = local_ofstab;
 
         const _Tp* inp = inp_ + nc0*iplanesize;
@@ -285,17 +285,17 @@ static void maxpool2d_16(const _Tp* inp_, _Tp* out_, const DepthwiseConvParams& 
     });
 }
 
-static void maxpool2d_16f(const void* inp_, void* out_, const DepthwiseConvParams& dwparams)
+static void maxpool2d_16f(const void* inp_, void* out_, const ConvState& cs)
 {
-    maxpool2d_16((const float16_t*)inp_, (float16_t*)out_, dwparams);
+    maxpool2d_16((const float16_t*)inp_, (float16_t*)out_, cs);
 }
 
-static void maxpool2d_16bf(const void* inp_, void* out_, const DepthwiseConvParams& dwparams)
+static void maxpool2d_16bf(const void* inp_, void* out_, const ConvState& cs)
 {
-    maxpool2d_16((const bfloat16_t*)inp_, (bfloat16_t*)out_, dwparams);
+    maxpool2d_16((const bfloat16_t*)inp_, (bfloat16_t*)out_, cs);
 }
 
-typedef void (*maxpool_func_t)(const void* inp, void* out, const DepthwiseConvParams& dwparams);
+typedef void (*maxpool_func_t)(const void* inp, void* out, const ConvState& cs);
 
 class MaxPoolOpImpl : public MaxPoolOp
 {
@@ -403,9 +403,9 @@ public:
         int64_t* ofstab = buf.data();
         int* yxtab = (int*)(ofstab + ksize);
 
-        DepthwiseConvParams dwparams = initDepthwiseConv(inpsize, params, yxtab, ofstab);
+        ConvState cs = initPoolingState(inpsize, params, yxtab, ofstab);
 
-        func(inptr0, outptr0, dwparams);
+        func(inptr0, outptr0, cs);
     }
 };
 

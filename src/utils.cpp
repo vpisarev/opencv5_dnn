@@ -71,21 +71,38 @@ int normalizeAxes(const Tensor& axes, int ndims, int* axisbuf, bool* axismask_)
     return (int)naxes;
 }
 
-TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparams)
+TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparams, const TensorSize& wsize)
 {
     CV_Assert(inpsize.layout == LAYOUT_NCHWc);
 
     int ndims = inpsize.ndims;
     size_t nspatialdims = (size_t)(ndims - 3);
     TensorSize outsize = inpsize;
+    int64_t ksizes[TensorSize::MAX_DIMS];
 
-    CV_Assert(convparams.ksizes.size() == nspatialdims);
+    if (!convparams.ksizes.empty()) {
+        size_t ksizes_size = convparams.ksizes.size();
+        CV_Assert(ksizes_size == nspatialdims || ksizes_size == nspatialdims+2);
+        for (size_t i = 0; i < nspatialdims; i++)
+            ksizes[i] = convparams.ksizes[ksizes_size - nspatialdims + i];
+        if (convparams.ngroups == 0 || ksizes_size == nspatialdims) {
+            outsize.size[1] = inpsize.size[1];
+        } else {
+            CV_Assert(convparams.ksizes[0] % inpsize.size[ndims-1] == 0);
+            outsize.size[1] = convparams.ksizes[0]/inpsize.size[ndims-1];
+        }
+    } else {
+        CV_Assert(!wsize.empty() && wsize.ndims == nspatialdims + 2);
+        for (size_t i = 0; i < nspatialdims; i++)
+            ksizes[i] = wsize.size[wsize.ndims - nspatialdims + i];
+    }
+
     CV_Assert(convparams.strides.empty() || convparams.strides.size() == nspatialdims);
     CV_Assert(convparams.dilations.empty() || convparams.dilations.size() == nspatialdims);
     CV_Assert(convparams.pads.empty() || convparams.pads.size() == nspatialdims*2);
 
     for (size_t i = 0; i < nspatialdims; i++) {
-        int ksize = convparams.ksizes[i];
+        int64_t ksize = ksizes[i];
         int stride = convparams.strides.empty() ? 1 : convparams.strides[i];
         int dilation = convparams.dilations.empty() ? 1 : convparams.dilations[i];
         int pad_before = 0, pad_after = 0;
@@ -96,6 +113,7 @@ TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparam
         outsize.size[i+2] = (inpsize.size[i+2] + pad_before + pad_after - dilation * (ksize - 1) - 1) / stride + 1;
         CV_Assert(outsize.size[i+2] >= 0);
     }
+    outsize.C = outsize.size[1]*outsize.size[ndims-1];
 
     return outsize;
 }
@@ -137,24 +155,32 @@ std::ostream& ConvParams::dump(std::ostream& strm)
     return strm;
 }
 
-static void calcKernelOffsets2D(int64_t Wi, int64_t KH, int64_t KW,
+static void calcKernelOffsets2D(int64_t Wi, int64_t Hk, int64_t Wk,
                                 int64_t DY, int64_t DX,
                                 int* yxtab, int64_t* ofstab)
 {
-    for (int64_t y = 0; y < KH; y++)
-        for (int64_t x = 0; x < KW; x++) {
-            int64_t k = y*KW + x;
+    if (!yxtab && !ofstab)
+        return;
+    for (int64_t y = 0; y < Hk; y++) {
+        for (int64_t x = 0; x < Wk; x++) {
+            int64_t k = y*Wk + x;
             int64_t dy = y*DY, dx = x*DX;
-            yxtab[k*2] = (int)dy; yxtab[k*2+1] = (int)dx;
-            ofstab[k] = dy*Wi + dx;
+            if (yxtab) {
+                yxtab[k*2] = (int)dy;
+                yxtab[k*2+1] = (int)dx;
+            }
+            if (ofstab) {
+                ofstab[k] = dy*Wi + dx;
+            }
         }
+    }
 }
 
-DepthwiseConvParams initDepthwiseConv(const TensorSize& inpsize,
-                                      const ConvParams& convparams,
-                                      int* yxtab, int64_t* ofstab)
+static ConvState initConvState_(const TensorSize& inpsize, const TensorSize& wsize,
+                                const ConvParams& convparams, const Op& activ_,
+                                int* yxtab, int64_t* ofstab)
 {
-    DepthwiseConvParams dwparams;
+    ConvState cs;
     TensorSize outsize = convInferShape(inpsize, convparams);
 
     int ndims = inpsize.ndims;
@@ -163,8 +189,8 @@ DepthwiseConvParams initDepthwiseConv(const TensorSize& inpsize,
     CV_Assert(inpsize.layout == LAYOUT_NCHWc);
     CV_Assert(1 <= nspatialdims && nspatialdims <= 2);
     int64_t N = outsize.size[0];
-    int64_t C1 = outsize.size[1];
-    int64_t C0 = outsize.size[ndims-1];
+    int64_t C1 = outsize.size[1], C0 = outsize.size[ndims-1];
+    int64_t K1 = wsize.empty() ? C1 : wsize.size[0]/C0;
     int64_t W = outsize.size[ndims-2];
     int64_t H = nspatialdims > 1 ? outsize.size[ndims-3] : 1;
     int64_t Wi = inpsize.size[ndims-2];
@@ -172,8 +198,8 @@ DepthwiseConvParams initDepthwiseConv(const TensorSize& inpsize,
     int64_t SY = 1, SX = 1, DY = 1, DX = 1;
     int64_t pad_y0 = 0, pad_x0 = 0, pad_y1 = 0, pad_x1 = 0;
 
-    int64_t KW = convparams.ksizes[nspatialdims-1];
-    int64_t KH = nspatialdims > 1 ? convparams.ksizes[nspatialdims-2] : 1;
+    int64_t Wk = convparams.ksizes[nspatialdims-1];
+    int64_t Hk = nspatialdims > 1 ? convparams.ksizes[nspatialdims-2] : 1;
 
     if (!convparams.strides.empty()) {
         SX = convparams.strides[nspatialdims-1];
@@ -195,11 +221,11 @@ DepthwiseConvParams initDepthwiseConv(const TensorSize& inpsize,
     int64_t inner_y0 = (pad_y0 + SY - 1)/SY;
     int64_t inner_x0 = (pad_x0 + SX - 1)/SX;
 
-    int64_t inner_y1 = (Hi - (KH - 1)*DY + pad_y0)/SY;
-    int64_t inner_x1 = (Wi - (KW - 1)*DX + pad_x0)/SX;
+    int64_t inner_y1 = (Hi - (Hk - 1)*DY + pad_y0)/SY;
+    int64_t inner_x1 = (Wi - (Wk - 1)*DX + pad_x0)/SX;
 
-    inner_y1 += inner_y1*SY - pad_y0 + (KH-1)*DY < Hi;
-    inner_x1 += inner_x1*SX - pad_x0 + (KW-1)*DX < Wi;
+    inner_y1 += inner_y1*SY - pad_y0 + (Hk-1)*DY < Hi;
+    inner_x1 += inner_x1*SX - pad_x0 + (Wk-1)*DX < Wi;
 
     inner_y1 = std::min(inner_y1, H);
     inner_x1 = std::min(inner_x1, W);
@@ -209,44 +235,79 @@ DepthwiseConvParams initDepthwiseConv(const TensorSize& inpsize,
         inner_x0 = W;
     }
 
-    calcKernelOffsets2D(Wi, KH, KW, DY, DX, yxtab, ofstab);
+    calcKernelOffsets2D(Wi, Hk, Wk, DY, DX, yxtab, ofstab);
 
-    dwparams.KH = KH;
-    dwparams.KW = KW;
-    dwparams.SY = SY;
-    dwparams.SX = SX;
-    dwparams.DY = DY;
-    dwparams.DX = DX;
+    cs.Hk = Hk;
+    cs.Wk = Wk;
+    cs.SY = SY;
+    cs.SX = SX;
+    cs.DY = DY;
+    cs.DX = DX;
 
-    dwparams.pad_y0 = pad_y0;
-    dwparams.pad_x0 = pad_x0;
-    dwparams.pad_y1 = pad_y1;
-    dwparams.pad_x1 = pad_x1;
+    cs.pad_y0 = pad_y0;
+    cs.pad_x0 = pad_x0;
+    cs.pad_y1 = pad_y1;
+    cs.pad_x1 = pad_x1;
 
-    dwparams.N = N;
-    dwparams.C1 = C1;
-    dwparams.C0 = C0;
-    dwparams.H = H;
-    dwparams.W = W;
-    dwparams.Hi = Hi;
-    dwparams.Wi = Wi;
+    cs.N = N;
+    cs.ngroups = convparams.ngroups > 0 ? convparams.ngroups : C1*C0;
+    cs.K1 = K1;
+    cs.C1 = C1;
+    cs.C0 = C0;
+    cs.H = H;
+    cs.W = W;
+    cs.Hi = Hi;
+    cs.Wi = Wi;
 
-    dwparams.inner_y0 = inner_y0;
-    dwparams.inner_x0 = inner_x0;
-    dwparams.inner_y1 = inner_y1;
-    dwparams.inner_x1 = inner_x1;
+    cs.inner_y0 = inner_y0;
+    cs.inner_x0 = inner_x0;
+    cs.inner_y1 = inner_y1;
+    cs.inner_x1 = inner_x1;
 
-    dwparams.yxtab = yxtab;
-    dwparams.ofstab = ofstab;
+    cs.yxtab = yxtab;
+    cs.ofstab = ofstab;
 
-    return dwparams;
+    cs.activation = nullptr;
+    cs.fastActivation = ACTIV_NONE;
+
+    ElemwiseOp* activ;
+    if (activ_ && (activ = dynamic_cast<ElemwiseOp*>(activ_.get())) != 0) {
+        cs.activation = activ->getActivation(CV_32F);
+        CV_Assert(cs.activation != nullptr);
+        memcpy(cs.activParams, activ->params, ElemwiseOp::MAX_PARAMS*sizeof(activ->params[0]));
+        if (activ->opcode == ELWISE_RELU) {
+            cs.fastActivation = ACTIV_RELU;
+            cs.activation = nullptr;
+        } else if (activ->opcode == ELWISE_LRELU) {
+            cs.fastActivation = ACTIV_LEAKY_RELU;
+            cs.activation = nullptr;
+        } else if (activ->opcode == ELWISE_CLIP && cs.activParams[0] == 0.f) {
+            cs.fastActivation = ACTIV_CLIP;
+            cs.activation = nullptr;
+        }
+    }
+
+    return cs;
 }
 
-std::ostream& DepthwiseConvParams::dump(std::ostream& strm)
+ConvState initConvState(const TensorSize& inpsize, const TensorSize& wsize,
+                        const ConvParams& convparams, const Op& activ,
+                        int* yxtab, int64_t* ofstab)
 {
-    strm << "{N=" << N << ", C1=" << C1 << ", C0=" << C0;
+    return initConvState_(inpsize, wsize, convparams, activ, yxtab, ofstab);
+}
+
+ConvState initPoolingState(const TensorSize& inpsize, const ConvParams& convparams,
+                           int* yxtab, int64_t* ofstab)
+{
+    return initConvState_(inpsize, TensorSize(), convparams, Op(), yxtab, ofstab);
+}
+
+std::ostream& ConvState::dump(std::ostream& strm)
+{
+    strm << "{N=" << N << ", C1=" << C1 << ", C0=" << C0 << ", K1=" << K1 << ", ngroups=" << ngroups;
     strm << ", H=" << H << ", W=" << W << ", Hi=" << Hi << ", Wi=" << Wi;
-    strm << ", KH=" << KH << ", KW=" << KW << ", SY=" << SY << ", SX=" << SX;
+    strm << ", Hk=" << Hk << ", Wk=" << Wk << ", SY=" << SY << ", SX=" << SX;
     strm << ", DY=" << DY << ", DX=" << DX;
     strm << ", pad_y0=" << pad_y0 << ", pad_x0=" << pad_x0;
     strm << ", pad_y1=" << pad_y1 << ", pad_x1=" << pad_x1;

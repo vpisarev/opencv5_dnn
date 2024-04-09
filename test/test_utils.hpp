@@ -12,7 +12,9 @@
 namespace cv {
 namespace dnn {
 
-TensorSize ref_conv_infer_shapes(const TensorSize& inp, const ConvParams& params);
+TensorSize ref_conv_infer_shapes(const TensorSize& inpsize,
+                                 const ConvParams& convparams,
+                                 const TensorSize& wsize=TensorSize());
 
 }
 }

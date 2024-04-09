@@ -111,11 +111,14 @@ public:
     enum { MAX_PARAMS=10 };
     typedef void (*forward_t)(size_t ninputs, const void** inputs, const size_t* steps,
                               void* output, size_t len, const float* params);
+    typedef void (*activ_t)(const void* input, void* output, size_t len, const float* params);
     static Op create(ElemwiseOpcode opcode, const float* params=nullptr, size_t nparams=0);
     virtual ~ElemwiseOp();
 
     static forward_t getForwardSlice(ElemwiseOpcode opcode, int type);
+    static activ_t getActivation(ElemwiseOpcode opcode, int type);
     virtual forward_t getForwardSlice(int type) const;
+    virtual activ_t getActivation(int type) const;
     ElemwiseOpcode opcode;
     float params[MAX_PARAMS];
 };
@@ -291,6 +294,7 @@ struct CV_EXPORTS ConvParams
     std::vector<int> strides={};
     std::vector<int> dilations={};
     std::vector<int> pads={};
+    int ngroups = 0;
     std::ostream& dump(std::ostream& strm);
 };
 
@@ -351,16 +355,18 @@ CV_EXPORTS Arg averagePool(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS BatchNormOp : public BaseOp
 {
-    static Op create(double epsilon, double momentum, bool trainingMode);
+    static Op create(double epsilon=1e-5);
     virtual ~BatchNormOp();
-
+    virtual void computeScaleBias(const Tensor& scale0, const Tensor& bias0,
+                                  const Tensor& mean, const Tensor& variance) = 0;
+    Tensor scale, bias;
     double epsilon;
-    double momentum;
-    bool trainingMode;
 };
 
-CV_EXPORTS Arg batchNorm(Graph& graph, std::string_view opname, std::string_view outname,
-                         Arg input, Arg scale, Arg B, Arg mean, Arg variance);
+CV_EXPORTS Arg batchNorm(Graph& graph, std::string_view opname,
+                         std::string_view outname,
+                         Arg input, Arg scale, Arg B, Arg mean,
+                         Arg variance, double epsilon=1e-5);
 
 /*
     Type cast
@@ -413,14 +419,17 @@ struct CV_EXPORTS ConvOp : public BaseOp
     static Op create(const ConvParams& convparams);
     virtual ~ConvOp();
 
+    virtual void setWeights(const Tensor& weights, const Tensor& bias, int64_t C0, int accuracy=-1) = 0;
+    virtual void fuseBatchNorm(const Op& batchNorm) = 0;
+    virtual void fuseActivation(const Op& activ) = 0;
+
     ConvParams params;
     Op batchNorm; // fused batch norm, if any
     Op activ; // fused activation, if any
-    bool fused_residual;
 };
 
 CV_EXPORTS Arg conv(Graph& graph, std::string_view opname, std::string_view outname,
-                    Arg input, Arg weights, const ConvParams& params);
+                    Arg input, Arg weights, Arg bias, const ConvParams& params);
 
 /*
     Transposed Convolution
@@ -434,7 +443,7 @@ struct CV_EXPORTS ConvTransposeOp : public BaseOp
 };
 
 CV_EXPORTS Arg convTranspose(Graph& graph, std::string_view opname, std::string_view outname,
-                             Arg input, Arg weights, const ConvParams& params);
+                             Arg input, Arg weights, Arg bias, const ConvParams& params);
 
 /*
     Dropout

@@ -72,7 +72,7 @@ static void ref_maxpool(const Tensor& inp_, Tensor& out_, const ConvParams& para
     parallel_for_(Range(0, (int)(N*C1*C0)), [&](const Range& r) {
         int64_t H = outsize.size[2], W = outsize.size[3];
         int64_t Hi = inpsize.size[2], Wi = inpsize.size[3];
-        int64_t KH = params.ksizes[0], KW = params.ksizes[1];
+        int64_t Hk = params.ksizes[0], Wk = params.ksizes[1];
         int64_t DY = params.dilations[0], DX = params.dilations[1];
         int64_t SY = params.strides[0], SX = params.strides[1];
         int64_t pad_y0 = params.pads[0], pad_x0 = params.pads[1];
@@ -90,8 +90,8 @@ static void ref_maxpool(const Tensor& inp_, Tensor& out_, const ConvParams& para
                 for (int64_t x0 = 0; x0 < W; x0++, out += C0) {
                     int64_t xi_ = x0*SX - pad_x0;
                     float s0 = -FLT_MAX;
-                    for (int64_t ky = 0; ky < KH; ky++) {
-                        for (int64_t kx = 0; kx < KW; kx++) {
+                    for (int64_t ky = 0; ky < Hk; ky++) {
+                        for (int64_t kx = 0; kx < Wk; kx++) {
                             int64_t yi = yi_ + ky*DY;
                             int64_t xi = xi_ + kx*DX;
                             float v0;
@@ -122,22 +122,22 @@ void test_maxpool()
         int64_t N = (rand() % 4) + 1;
         int64_t C1 = (rand() % 3) + 1;
         int64_t C0 = (rand() % 2) ? nlanes*2 : nlanes;
-        int KH = (rand() % 5) + 1;
-        int KW = (rand() % 5) + 1;
+        int Hk = (rand() % 5) + 1;
+        int Wk = (rand() % 5) + 1;
         int SY = (rand() % 2) + 1;
         int SX = (rand() % 2) + 1;
         int DY = (rand() % 2) + 1;
         int DX = (rand() % 2) + 1;
-        int pad_y0 = (rand() % 2) ? KH/2 : 0;
-        int pad_y1 = (rand() % 2) ? KH/2 : 0;
-        int pad_x0 = (rand() % 2) ? KW/2 : 0;
-        int pad_x1 = (rand() % 2) ? KW/2 : 0;
+        int pad_y0 = (rand() % 2) ? Hk/2 : 0;
+        int pad_y1 = (rand() % 2) ? Hk/2 : 0;
+        int pad_x0 = (rand() % 2) ? Wk/2 : 0;
+        int pad_x1 = (rand() % 2) ? Wk/2 : 0;
 
-        int64_t Hi = ((rand() % 21) + 1)*SY + (KH-1)*DY + pad_y0 + pad_y1 + 1;
-        int64_t Wi = ((rand() % 21) + 1)*SX + (KW-1)*DX + pad_x0 + pad_x1 + 1;
+        int64_t Hi = ((rand() % 21) + 1)*SY + (Hk-1)*DY + pad_y0 + pad_y1 + 1;
+        int64_t Wi = ((rand() % 21) + 1)*SX + (Wk-1)*DX + pad_x0 + pad_x1 + 1;
 
         ConvParams params;
-        params.ksizes = {KH, KW};
+        params.ksizes = {Hk, Wk};
         params.strides = {SY, SX};
         params.dilations = {DY, DX};
         params.pads = {pad_y0, pad_x0, pad_y1, pad_x1};

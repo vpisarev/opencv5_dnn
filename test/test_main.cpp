@@ -7,10 +7,11 @@
 int main(int, char**)
 {
     //cv::dnn::test_0d();
+    cv::dnn::test_conv();
     //cv::dnn::test_elemwise();
     //cv::dnn::test_flatten();
     //cv::dnn::test_globavgpool();
-    cv::dnn::test_maxpool();
+    //cv::dnn::test_maxpool();
     //cv::dnn::test_reduce();
     //cv::dnn::test_reshape();
     //cv::dnn::test_tensor_basic();

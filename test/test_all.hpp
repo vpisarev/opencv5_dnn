@@ -14,6 +14,7 @@ namespace cv {
 namespace dnn {
 
 void test_0d();
+void test_conv();
 void test_elemwise();
 void test_flatten();
 void test_globavgpool();

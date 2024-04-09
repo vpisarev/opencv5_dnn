@@ -7,8 +7,6 @@
 
 namespace cv { namespace dnn {
 
-TransformLayoutOp::~TransformLayoutOp() {}
-
 template <typename _Tp>
 void transform_layout(const _Tp* inp_, int64_t istep, int64_t istep0, int64_t istep1,
                       _Tp* out_, int64_t ostep, int64_t ostep0, int64_t ostep1,
@@ -302,6 +300,8 @@ public:
         });
     }
 };
+
+TransformLayoutOp::~TransformLayoutOp() {}
 
 Op TransformLayoutOp::create(TensorLayout layout, int64_t C0)
 {

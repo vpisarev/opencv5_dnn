@@ -121,8 +121,10 @@ int prepareForBroadcasting(
 
 #undef CV_IMPLEMENT_UNARY_OP
 #define CV_IMPLEMENT_UNARY_OP(name, suffix, T1, T2, WT, op) \
-static void elemwise_##name##_##suffix(size_t ninputs, const void** inptr_, const size_t* steps, \
-                                       void* outptr_, size_t len, const float*) \
+static void elemwise_##name##_##suffix(size_t ninputs, const void** inptr_, \
+                                       const size_t* steps, \
+                                       void* outptr_, size_t len, \
+                                       const float*) \
 { \
     CV_Assert(ninputs == 1 && steps[0] == 1); \
     const T1* inptr = (const T1*)inptr_[0]; \
@@ -133,10 +135,24 @@ static void elemwise_##name##_##suffix(size_t ninputs, const void** inptr_, cons
     } \
 }
 
+#undef CV_IMPLEMENT_ACTIV_OP
+#define CV_IMPLEMENT_ACTIV_OP(name, suffix, T1, T2, WT, op) \
+static void activ_##name##_##suffix(const void* inptr_, void* outptr_, \
+                                    size_t len, const float*) \
+{ \
+    const T1* inptr = (const T1*)inptr_; \
+    T2* outptr = (T2*)outptr_; \
+    for (size_t j = 0; j < len; j++) { \
+        WT x = (WT)inptr[j]; \
+        outptr[j] = T2(op(x)); \
+    } \
+}
+
 #undef CV_IMPLEMENT_MATH_OP
 #define CV_IMPLEMENT_MATH_OP(name, op) \
     CV_IMPLEMENT_UNARY_OP(name, 32f, float, float, float, op) \
-    CV_IMPLEMENT_UNARY_OP(name, 16f, cv::float16_t, cv::float16_t, float, op)
+    CV_IMPLEMENT_UNARY_OP(name, 16f, hfloat, hfloat, float, op) \
+    CV_IMPLEMENT_ACTIV_OP(name, 32f, float, float, float, op)
 
 #define CV_RELU(x) std::max((x), 0.f)
 #define CV_SIGN(x) (((x)>0.f)-((x)<0.f))
@@ -178,7 +194,19 @@ CV_IMPLEMENT_UNARY_OP(neg, 16s, int16_t, int16_t, int16_t, CV_NEG)
 CV_IMPLEMENT_UNARY_OP(neg, 32s, int32_t, int32_t, int32_t, CV_NEG)
 CV_IMPLEMENT_UNARY_OP(neg, 64s, int64_t, int64_t, int64_t, CV_NEG)
 CV_IMPLEMENT_UNARY_OP(neg, 32f, float, float, float, CV_NEG)
-CV_IMPLEMENT_UNARY_OP(neg, 16f, cv::float16_t, cv::float16_t, float, CV_NEG)
+CV_IMPLEMENT_UNARY_OP(neg, 16f, hfloat, hfloat, float, CV_NEG)
+
+static void activ_clip_32f(const void* inptr_, void* outptr_,
+                           size_t len, const float* params)
+{
+    float minv = params[0], maxv = params[1];
+    const float* inptr = (const float*)inptr_;
+    float* outptr = (float*)outptr_;
+    for (size_t j = 0; j < len; j++) {
+        float x = inptr[j];
+        outptr[j] = (float)std::min(std::max(x, minv), maxv);
+    }
+}
 
 static void elemwise_clip_32f(size_t ninputs, const void** inptr_, const size_t* steps,
                               void* outptr_, size_t len, const float*)
@@ -206,20 +234,19 @@ static void elemwise_clip_16f(size_t ninputs, const void** inptr_, const size_t*
         minv = *((const float*)inptr_[1]);
     if (ninputs > 2)
         maxv = *((const float*)inptr_[2]);
-    const cv::float16_t* inptr = (const cv::float16_t*)inptr_[0];
-    cv::float16_t* outptr = (cv::float16_t*)outptr_;
+    const hfloat* inptr = (const hfloat*)inptr_[0];
+    hfloat* outptr = (hfloat*)outptr_;
     for (size_t j = 0; j < len; j++) {
         float x = (float)inptr[j];
-        outptr[j] = cv::float16_t(std::min(std::max(x, minv), maxv));
+        outptr[j] = hfloat(std::min(std::max(x, minv), maxv));
     }
 }
 
-static void elemwise_leaky_relu_32f(size_t ninputs, const void** inptr_, const size_t* steps,
-                                    void* outptr_, size_t len, const float* params)
+static void activ_leaky_relu_32f(const void* inptr_, void* outptr_,
+                                 size_t len, const float* params)
 {
     float alpha = params[0];
-    CV_Assert(ninputs == 1 && steps[0] == 1);
-    const float* inptr = (const float*)inptr_[0];
+    const float* inptr = (const float*)inptr_;
     float* outptr = (float*)outptr_;
     for (size_t j = 0; j < len; j++) {
         float x = inptr[j];
@@ -230,15 +257,24 @@ static void elemwise_leaky_relu_32f(size_t ninputs, const void** inptr_, const s
 static void elemwise_leaky_relu_16f(size_t ninputs, const void** inptr_, const size_t* steps,
                                     void* outptr_, size_t len, const float* params)
 {
-    float alpha = params[0];
     CV_Assert(ninputs == 1 && steps[0] == 1);
-    const cv::float16_t* inptr = (const cv::float16_t*)inptr_[0];
-    cv::float16_t* outptr = (cv::float16_t*)outptr_;
+    float alpha = params[0];
+    const float* inptr = (const float*)inptr_[0];
+    float* outptr = (float*)outptr_;
     for (size_t j = 0; j < len; j++) {
         float x = (float)inptr[j];
-        outptr[j] = cv::float16_t(x*(x < 0.f ? alpha : 1.f));
+        x = (float)(x*(x < 0.f ? alpha : 1.f));
+        outptr[j] = hfloat(x);
     }
 }
+
+static void elemwise_leaky_relu_32f(size_t ninputs, const void** inptr_, const size_t* steps,
+                                    void* outptr_, size_t len, const float* params)
+{
+    CV_Assert(ninputs == 1 && steps[0] == 1);
+    activ_leaky_relu_32f(inptr_[0], outptr_, len, params);
+}
+
 
 #undef CV_IMPLEMENT_BINARY_OP
 #define CV_IMPLEMENT_BINARY_OP(name, suffix, T1, T2, WT, op, init) \
@@ -286,7 +322,7 @@ static void elemwise_##name##_##suffix(size_t ninputs, const void** inptr_, cons
     CV_IMPLEMENT_BINARY_OP(name, 64u, uint64_t, uint64_t, uint64_t, iop, init) \
     CV_IMPLEMENT_BINARY_OP(name, 64s, int64_t, int64_t, int64_t, iop, init) \
     CV_IMPLEMENT_BINARY_OP(name, 32f, float, float, float, fop, init) \
-    CV_IMPLEMENT_BINARY_OP(name, 16f, cv::float16_t, cv::float16_t, float, fop, init)
+    CV_IMPLEMENT_BINARY_OP(name, 16f, hfloat, hfloat, float, fop, init)
 
 #define CV_IMPLEMENT_LOGIC_OP_ALLTYPES(name, op) \
     CV_IMPLEMENT_BINARY_OP(name, 8u, uint8_t, uint8_t, uint8_t, op, noinit) \
@@ -304,7 +340,7 @@ static void elemwise_##name##_##suffix(size_t ninputs, const void** inptr_, cons
     CV_IMPLEMENT_BINARY_OP(name, 64u, uint64_t, bool, uint64_t, op, noinit) \
     CV_IMPLEMENT_BINARY_OP(name, 64s, int64_t, bool, int64_t, op, noinit) \
     CV_IMPLEMENT_BINARY_OP(name, 32f, float, bool, float, op, noinit) \
-    CV_IMPLEMENT_BINARY_OP(name, 16f, cv::float16_t, bool, float, op, noinit)
+    CV_IMPLEMENT_BINARY_OP(name, 16f, hfloat, bool, float, op, noinit)
 
 #define CV_IMPLEMENT_CMP_STUB_OP(name0, name1, suffix, T) \
 static void elemwise_##name0##_##suffix(size_t ninputs, const void** inptr_, const size_t* steps, \
@@ -326,7 +362,7 @@ static void elemwise_##name0##_##suffix(size_t ninputs, const void** inptr_, con
     CV_IMPLEMENT_CMP_STUB_OP(name0, name1, 64u, uint64_t) \
     CV_IMPLEMENT_CMP_STUB_OP(name0, name1, 64s, int64_t) \
     CV_IMPLEMENT_CMP_STUB_OP(name0, name1, 32f, float) \
-    CV_IMPLEMENT_CMP_STUB_OP(name0, name1, 16f, cv::float16_t)
+    CV_IMPLEMENT_CMP_STUB_OP(name0, name1, 16f, hfloat)
 
 #undef CV_ADD
 #define CV_ADD(x, y) ((x) + (y))
@@ -446,6 +482,16 @@ std::string_view elemwiseOpcode2str(ElemwiseOpcode opcode_)
 }
 
 ElemwiseOp::~ElemwiseOp() {}
+
+ElemwiseOp::activ_t ElemwiseOp::getActivation(ElemwiseOpcode opcode, int type)
+{
+    CV_Assert(type == CV_32F);
+    return opcode == ELWISE_RELU ? activ_relu_32f :
+           opcode == ELWISE_LRELU ? activ_leaky_relu_32f :
+           // clip requires 3 inputs; need to add CLIPS with 1 input and 2 params (minv, maxv)
+           /*opcode == ELWISE_CLIP ? activ_clip_32f : */
+           opcode == ELWISE_SIGMOID ? activ_sigmoid_32f : nullptr;
+}
 
 ElemwiseOp::forward_t ElemwiseOp::getForwardSlice(ElemwiseOpcode opcode, int type)
 {
@@ -586,6 +632,11 @@ ElemwiseOp::forward_t ElemwiseOp::getForwardSlice(ElemwiseOpcode opcode, int typ
 ElemwiseOp::forward_t ElemwiseOp::getForwardSlice(int type) const
 {
     return getForwardSlice(opcode, type);
+}
+
+ElemwiseOp::activ_t ElemwiseOp::getActivation(int type) const
+{
+    return getActivation(opcode, type);
 }
 
 class ElemwiseOpImpl : public ElemwiseOp

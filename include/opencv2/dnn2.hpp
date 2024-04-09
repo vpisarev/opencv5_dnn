@@ -224,6 +224,7 @@ public:
     template<typename _Tp> void setTo(_Tp value) {
         setTo(DataType<_Tp>::type, &value);
     }
+    void convertTo(Tensor& tensor, int type, double scale=1, double bias=0) const;
     Tensor reshape(const TensorSize& size) const;
     Tensor reinterpret(int type) const;
     template<typename _Tp> Tensor reinterpret() const

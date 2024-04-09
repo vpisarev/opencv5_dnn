@@ -667,6 +667,31 @@ void Tensor::setTo(int vtype, const void* value0)
     memoryManager()->fill(device(), handle(), slice_start_, total(), value, elementSize());
 }
 
+void Tensor::convertTo(Tensor& tensor, int newtype, double scale, double bias) const
+{
+    newtype = CV_MAT_TYPE(newtype);
+    if ((type_ == newtype && scale == 1 && bias == 0) || empty()) {
+        copyTo(tensor);
+        tensor.type_ = newtype;
+        return;
+    }
+
+    tensor.fitSameDevice(*this, size(), newtype);
+
+    Tensor src_t = download(), temp;
+    Mat src_m = src_t.getMat(), dst_m;
+    DeviceType dev = deviceType();
+    if (dev == Device_CPU) {
+        dst_m = tensor.getMat();
+        src_m.convertTo(dst_m, newtype, scale, bias);
+    } else {
+        temp.fit(size(), newtype);
+        dst_m = temp.getMat();
+        src_m.convertTo(dst_m, newtype, scale, bias);
+        temp.copyTo(tensor);
+    }
+}
+
 Tensor Tensor::reshape(const TensorSize& newsize) const
 {
     Tensor t = *this;

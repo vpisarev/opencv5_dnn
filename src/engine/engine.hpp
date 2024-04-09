@@ -9,6 +9,8 @@
 
 namespace cv { namespace dnn {
 
+typedef float16_t hfloat;
+
 typedef std::pair<int64_t, std::string> OnnxOpSet;
 
 struct OnnxTensorDim
@@ -120,25 +122,42 @@ int normalizeAxes(const Tensor& axes, int ndims, int* axisbuf, bool* axismask=nu
 
 // computes shape of the output tensor of convolution
 // (including depth-wise convolution), max pooling or average pooling operations
-TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparams);
+TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparams, const TensorSize& wsize=TensorSize());
 
-struct DepthwiseConvParams
+enum FastActivation {
+    ACTIV_NONE=0,
+    ACTIV_RELU,
+    ACTIV_LEAKY_RELU,
+    ACTIV_CLIP
+};
+
+struct ConvState
 {
-    int64_t KH, KW, SY, SX, DY, DX;
+    int64_t ngroups, K1;
+    int64_t Hk, Wk, SY, SX, DY, DX;
     int64_t pad_y0, pad_x0, pad_y1, pad_x1;
     int64_t N, Hi, Wi, H, W, C1, C0;
     int64_t inner_y0, inner_x0, inner_y1, inner_x1;
     const int* yxtab;
     const int64_t* ofstab;
 
+    FastActivation fastActivation;
+    float activParams[ElemwiseOp::MAX_PARAMS];
+    ElemwiseOp::activ_t activation;
+
     std::ostream& dump(std::ostream& strm);
 };
 
 // initializes the structure of parameters for 1D/2D/3D
 // depth-wise convolution, max pooling or average pooling
-DepthwiseConvParams initDepthwiseConv(const TensorSize& inpsize,
-                                      const ConvParams& convparams,
-                                      int* yxtab, int64_t* ofstab);
+ConvState initPoolingState(const TensorSize& inpsize,
+                           const ConvParams& convparams,
+                           int* yxtab, int64_t* ofstab);
+ConvState initConvState(const TensorSize& inpsize,
+                        const TensorSize& wsize,
+                        const ConvParams& convparams,
+                        const Op& activOp,
+                        int* yxtab=nullptr, int64_t* ofstab=nullptr);
 
 void prindent(std::ostream& strm, int indent);
 
