@@ -113,10 +113,10 @@ void ref_conv2d(const Tensor& inp_, Tensor& out_, const ConvParams& params,
     int ngroups = params.ngroups;
     TensorSize inpsize = inp_.size(), outsize = out_.size(), wsize = weights_.size();
     TensorLayout layout = inpsize.layout;
-    CV_Assert(layout == LAYOUT_NCHWc);
+    CV_Assert(layout == LAYOUT_NCHW);
     int ndims = inpsize.ndims;
     int wdims = wsize.ndims;
-    CV_Assert(ndims == 5 && outsize.ndims == ndims);
+    CV_Assert(ndims == 4 && outsize.ndims == ndims);
     CV_Assert(wdims == 4);
     int64_t N = inpsize.size[0], C = inpsize.size[1];
     int64_t Hi = inpsize.size[2], Wi = inpsize.size[3];
@@ -211,38 +211,39 @@ void test_conv()
         int SX = (rand() % 2) + 1;
         int DY = (rand() % 2) + 1;
         int DX = (rand() % 2) + 1;
-        int ngroups = rand() % 3;
+        if (Hk == 1)
+            SY = DY = 1;
+        if (Wk == 1)
+            SX = DX = 1;
+        int ngroups = rand() % 3 + 1;
         int pad_y0 = (rand() % 2) ? Hk/2 : 0;
         int pad_y1 = (rand() % 2) ? Hk/2 : 0;
         int pad_x0 = (rand() % 2) ? Wk/2 : 0;
         int pad_x1 = (rand() % 2) ? Wk/2 : 0;
-        if (ngroups <= 1) {
-            ngroups++;
-            C1 += C1 % ngroups;
-            K1 += K1 % ngroups;
-        } else {
-            K1 = C1;
-            ngroups = (int)(C1*C0);
+        if (ngroups > 1) {
+            C1 = ((C1 + ngroups - 1) / ngroups) * ngroups;
+            K1 = ((K1 + ngroups - 1) / ngroups) * ngroups;
         }
-        int64_t K = K1*C0;
+        int64_t K = K1*C0, C = C1*C0;
 
         int64_t Hi = ((rand() % 21) + 1)*SY + (Hk-1)*DY + pad_y0 + pad_y1 + 1;
         int64_t Wi = ((rand() % 21) + 1)*SX + (Wk-1)*DX + pad_x0 + pad_x1 + 1;
 
         ConvParams params;
         params.ngroups = ngroups;
-        params.ksizes = {(int)(K1*C0), (int)(C1*C0/ngroups), Hk, Wk};
+        params.ksizes = {(int)K, (int)(C/ngroups), Hk, Wk};
         params.strides = {SY, SX};
         params.dilations = {DY, DX};
         params.pads = {pad_y0, pad_x0, pad_y1, pad_x1};
 
-        Tensor a({{N, C1, Hi, Wi, C0}, LAYOUT_NCHWc}, CV_32F), c1;
-        Tensor w({{K1*C0, C1*C0/ngroups, Hk, Wk}, LAYOUT_UNKNOWN}, CV_32F);
-        std::vector<Tensor> c0;
+        Tensor a0({{N, C, Hi, Wi}, LAYOUT_NCHW}, CV_32F), a, c1, c0, c0_;
+        Tensor w({{K, C/ngroups, Hk, Wk}, LAYOUT_UNKNOWN}, CV_32F);
+        Tensor bias(TensorSize({K}, LAYOUT_UNKNOWN), CV_32F);
 
-        size_t i, a_total = a.total(), w_total = w.total();
-        float* a_data = (float*)a.data();
-        float* w_data = (float*)w.data();
+        size_t i, a_total = a0.total(), w_total = w.total(), b_total = bias.total();
+        float* a_data = a0.ptr<float>();
+        float* w_data = w.ptr<float>();
+        float* b_data = bias.ptr<float>();
 
         for (i = 0; i < a_total; i++) {
             float x = sinf((float)i*0.1f);
@@ -254,17 +255,27 @@ void test_conv()
             w_data[i] = x;
         }
 
+        for (i = 0; i < b_total; i++) {
+            float b = (float)(i + 1);
+        }
+
         Net2 net;
         Graph graph = net.newGraph("main", {}, {});
 
-        Op op = ConvOp::create(params);
-        op->forward(net, graph, {a, w}, c0, tmp);
+        Op nchw2block = TransformLayoutOp::create(LAYOUT_NCHWc, C0);
+        Op block2nchw = TransformLayoutOp::create(LAYOUT_NCHW);
+        Op conv = ConvOp::create(params);
+        dynamic_cast<ConvOp*>(conv.get())->setWeights(w, bias, C0);
 
-        TensorSize outsize = ref_conv_infer_shapes(a.size(), params, w.size());
+        nchw2block->forward(net, graph, {a0}, a, tmp);
+        conv->forward(net, graph, {a}, c0_, tmp);
+        block2nchw->forward(net, graph, {c0_}, c0, tmp);
+
+        TensorSize outsize = ref_conv_infer_shapes(a0.size(), params, w.size());
         c1.fitSameDevice(a, outsize, a.type());
-        ref_conv2d(a, c1, params, w, Tensor());
+        ref_conv2d(a0, c1, params, w, bias);
 
-        Mat m0 = c0[0].getMat();
+        Mat m0 = c0.getMat();
         Mat m1 = c1.getMat();
         double err = norm(m0, m1, NORM_INF);
         if (err > 1e-2) {
@@ -276,9 +287,9 @@ void test_conv()
             std::cout << "params: ";
             params.dump(std::cout) << "\n";
             std::cout << "input shape: ";
-            a.size().dump(std::cout) << "\n";
+            a0.size().dump(std::cout) << "\n";
             std::cout << "output shape: ";
-            c0[0].size().dump(std::cout) << "\n";
+            c0.size().dump(std::cout) << "\n";
             std::cout << "ref output shape: ";
             c1.size().dump(std::cout) << "\n";
             break;

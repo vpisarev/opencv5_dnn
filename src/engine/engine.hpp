@@ -146,6 +146,7 @@ struct ConvState
     ElemwiseOp::activ_t activation;
 
     std::ostream& dump(std::ostream& strm);
+    bool sameShape(const ConvState& cs) const;
 };
 
 // initializes the structure of parameters for 1D/2D/3D

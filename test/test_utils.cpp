@@ -7,15 +7,18 @@
 
 namespace cv { namespace dnn {
 
-TensorSize ref_conv_infer_shapes(const TensorSize& inpsize, const ConvParams& convparams, const TensorSize& wsize)
+TensorSize ref_conv_infer_shapes(const TensorSize& inpsize,
+                                 const ConvParams& convparams,
+                                 const TensorSize& wsize)
 {
-    CV_Assert(inpsize.layout == LAYOUT_NCHWc);
+    CV_Assert(inpsize.layout == LAYOUT_NCHWc || inpsize.layout == LAYOUT_NCHW);
 
     int ndims = inpsize.ndims;
-    size_t nspatialdims = (size_t)(ndims - 3);
+    int first_spat_dim = 2, last_spat_dim = ndims - 1 - (inpsize.layout == LAYOUT_NCHWc);
+    size_t nspatialdims = (size_t)(last_spat_dim - first_spat_dim + 1);
     TensorSize outsize = inpsize;
     int64_t ksizes[TensorSize::MAX_DIMS];
-    int64_t C0 = inpsize.size[ndims-1];
+    int64_t C0 = inpsize.layout == LAYOUT_NCHW ? 1 : inpsize.size[ndims-1];
 
     if (!convparams.ksizes.empty()) {
         size_t kdims = convparams.ksizes.size();
@@ -50,7 +53,8 @@ TensorSize ref_conv_infer_shapes(const TensorSize& inpsize, const ConvParams& co
         outsize.size[i+2] = (inpsize.size[i+2] + pad_before + pad_after - dilation * (ksize - 1) - 1) / stride + 1;
         CV_Assert(outsize.size[i+2] >= 0);
     }
-    outsize.C = outsize.size[1]*outsize.size[ndims-1];
+    if (inpsize.layout == LAYOUT_NCHWc)
+        outsize.C = outsize.size[1]*outsize.size[ndims-1];
 
     return outsize;
 }

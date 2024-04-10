@@ -327,6 +327,10 @@ public:
                         const std::vector<Tensor>& inputs,
                         std::vector<Tensor>& outputs,
                         std::vector<Buffer>& tempbufs) = 0;
+    virtual void forward(Net2& net, Graph& graph,
+                        const std::vector<Tensor>& inputs,
+                        Tensor& output,
+                        std::vector<Buffer>& tempbufs);
 protected:
     int profileIdx;
 };

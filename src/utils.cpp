@@ -120,7 +120,7 @@ TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparam
 
 std::ostream& ConvParams::dump(std::ostream& strm)
 {
-    strm << "{ ksizes: {";
+    strm << "{ ngroups: " << ngroups << ", ksizes: {";
     bool first = true;
     for (auto ksz: ksizes) {
         if (!first) strm << ", ";
@@ -313,6 +313,14 @@ std::ostream& ConvState::dump(std::ostream& strm)
     strm << ", pad_y1=" << pad_y1 << ", pad_x1=" << pad_x1;
     strm << "}";
     return strm;
+}
+
+bool ConvState::sameShape(const ConvState& cs) const
+{
+    return N == cs.N && C1 == cs.C1 && C0 == cs.C0 && K1 == cs.K1 &&
+        ngroups == cs.ngroups && H == cs.H && W == cs.W && Hi == cs.Hi && Wi == cs.Wi &&
+        Hk == cs.Hk && Wk == cs.Wk && SY == cs.SY && SX == cs.SX && DY == cs.DY && DX == cs.DX &&
+        pad_y0 == cs.pad_y0 && pad_x0 == cs.pad_x0 && pad_y1 == cs.pad_y1 && pad_x1 == cs.pad_x1;
 }
 
 }}

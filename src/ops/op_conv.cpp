@@ -468,6 +468,11 @@ public:
             fuseBatchNormWeights();
         }
 
+        if (ofs0.empty() || !cs.sameShape(prev_cs)) {
+            initConv2DTables(cs, ofsbuf, ofs0, ofsptrs, mask);
+            prev_cs = cs;
+        }
+
         func(inptr0, outptr0, cs, wptr0,
              fused_scale.data(), fused_bias.data(), ofs0.data(),
              (const int32_t**)ofsptrs.data(), mask.data());
@@ -481,8 +486,9 @@ public:
 
     Tensor weights, bias, fused_scale, fused_bias;
     TensorSize wsize0;
-    std::vector<int32_t> ofs0;
+    ConvState prev_cs;
     std::vector<int32_t> ofsbuf;
+    std::vector<int32_t> ofs0;
     std::vector<int32_t*> ofsptrs;
     std::vector<uint8_t> mask;
 };

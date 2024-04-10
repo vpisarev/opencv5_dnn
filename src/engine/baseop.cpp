@@ -93,4 +93,15 @@ int64_t BaseOp::getFLOPS(const std::vector<SizeType>&,
     return (int64_t)outputs[0].size.total();
 }
 
+void BaseOp::forward(Net2& net, Graph& graph,
+                    const std::vector<Tensor>& inputs,
+                    Tensor& output,
+                    std::vector<Buffer>& tempbufs)
+{
+    std::vector<Tensor> outputs = {output};
+    forward(net, graph, inputs, outputs, tempbufs);
+    CV_Assert(outputs.size() == 1);
+    output = outputs[0];
+}
+
 }}
