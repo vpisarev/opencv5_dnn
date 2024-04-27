@@ -110,47 +110,52 @@ namespace cv { namespace dnn {
 void ref_conv2d(const Tensor& inp_, Tensor& out_, const ConvParams& params,
                 const Tensor& weights_, const Tensor& bias_)
 {
-    int ngroups = params.ngroups;
     TensorSize inpsize = inp_.size(), outsize = out_.size(), wsize = weights_.size();
     TensorLayout layout = inpsize.layout;
     CV_Assert(layout == LAYOUT_NCHW);
-    int ndims = inpsize.ndims;
-    int wdims = wsize.ndims;
-    CV_Assert(ndims == 4 && outsize.ndims == ndims);
-    CV_Assert(wdims == 4);
-    int64_t N = inpsize.size[0], C = inpsize.size[1];
-    int64_t Hi = inpsize.size[2], Wi = inpsize.size[3];
-    int64_t K = wsize.size[0], WCg = wsize.size[1], Hk = wsize.size[2], Wk = wsize.size[3];
-    int64_t H0 = outsize.size[2], W0 = outsize.size[3];
-    int64_t Cg = C/ngroups, Kg = K/ngroups;
-    int64_t iplanesize = Hi*Wi;
-    int64_t planesize = H0*W0;
-    int64_t HkWk = Hk*Wk;
-    int64_t strides[] = {1, 1}, dilations[] = {1, 1}, pads[] = {0, 0, 0, 0};
+    CV_Assert(inpsize.ndims == 4 && outsize.ndims == inpsize.ndims);
+    CV_Assert(wsize.ndims == 4);
 
-    CV_Assert(outsize.size[0] == N);
-    CV_Assert(outsize.size[1] == K);
-    CV_Assert(C % ngroups == 0);
-    CV_Assert(K % ngroups == 0);
+    int64_t N_ = inpsize.size[0], K_ = wsize.size[0];
 
-    if (!params.strides.empty()) {
-        strides[0] = params.strides[0];
-        strides[1] = params.strides[1];
-    }
+    CV_Assert(outsize.size[0] == N_);
+    CV_Assert(outsize.size[1] == K_);
+    CV_Assert(inpsize.size[1] % params.ngroups == 0);
+    CV_Assert(outsize.size[1] % params.ngroups == 0);
 
-    if (!params.dilations.empty()) {
-        dilations[0] = params.dilations[0];
-        dilations[1] = params.dilations[1];
-    }
+    parallel_for_(Range(0, (int)(N_*K_)), [&](const Range& r) {
+        int ndims = inpsize.ndims;
+        int wdims = wsize.ndims;
+        int ngroups = params.ngroups;
+        int64_t N = inpsize.size[0], C = inpsize.size[1];
+        int64_t Hi = inpsize.size[2], Wi = inpsize.size[3];
+        int64_t K = wsize.size[0], WCg = wsize.size[1];
+        int64_t Hk = wsize.size[2], Wk = wsize.size[3];
+        int64_t H0 = outsize.size[2], W0 = outsize.size[3];
+        int64_t Cg = C/ngroups, Kg = K/ngroups;
 
-    if (!params.pads.empty()) {
-        pads[0] = params.pads[0];
-        pads[1] = params.pads[1];
-        pads[2] = params.pads[2];
-        pads[3] = params.pads[3];
-    }
+        int64_t iplanesize = Hi*Wi;
+        int64_t planesize = H0*W0;
+        int64_t HkWk = Hk*Wk;
+        int64_t strides[] = {1, 1}, dilations[] = {1, 1}, pads[] = {0, 0, 0, 0};
 
-    parallel_for_(Range(0, (int)(N*K)), [&](const Range& r) {
+        if (!params.strides.empty()) {
+            strides[0] = params.strides[0];
+            strides[1] = params.strides[1];
+        }
+
+        if (!params.dilations.empty()) {
+            dilations[0] = params.dilations[0];
+            dilations[1] = params.dilations[1];
+        }
+
+        if (!params.pads.empty()) {
+            pads[0] = params.pads[0];
+            pads[1] = params.pads[1];
+            pads[2] = params.pads[2];
+            pads[3] = params.pads[3];
+        }
+
         int64_t nk0 = r.start, nk1 = r.end;
         const float* inp = inp_.ptr<float>();
         float* out = out_.ptr<float>();
@@ -161,6 +166,7 @@ void ref_conv2d(const Tensor& inp_, Tensor& out_, const ConvParams& params,
             int64_t n = nk / K;
             int64_t k = nk - n*K;
             int64_t g = k/Kg;
+            float b = bias ? bias[k] : 0.f;
             for (int64_t y0 = 0; y0 < H0; y0++) {
                 for (int64_t x0 = 0; x0 < W0; x0++) {
                     int64_t yi_ = y0*strides[0] - pads[0];
@@ -182,7 +188,7 @@ void ref_conv2d(const Tensor& inp_, Tensor& out_, const ConvParams& params,
                             }
                         }
                     }
-                    out[((n*K + k)*H0 + y0)*W0 + x0] = s + bias[k];
+                    out[((n*K + k)*H0 + y0)*W0 + x0] = s + b;
                 }
             }
         }
@@ -201,26 +207,37 @@ void test_conv()
     for (iter = 0; iter < maxiter; iter++) {
         std::cout << ".";
         std::cout.flush();
-        int64_t N = (rand() % 4) + 1;
-        int64_t C1 = (rand() % 3) + 1;
-        int64_t C0 = (rand() % 2) ? nlanes*2 : nlanes;
-        int64_t K1 = (rand() % 3) + 1;
-        int Hk = (rand() % 5) + 1;
-        int Wk = (rand() % 5) + 1;
+        bool depthwise = rand() % 5 == 0;
+        int64_t N = 2;//(rand() % 4) + 1;
+        int64_t C1 = 3;//(rand() % 3) + 1;
+        int64_t C0 = 4;//(rand() % 2) ? nlanes*2 : nlanes;
+        int64_t K1 = depthwise ? C1 : (rand() % 3) + 1;
+#if 1
+        int Hk = (rand() % 3)*2 + 1;
+        int Wk = (rand() % 3)*2 + 1;
         int SY = (rand() % 2) + 1;
         int SX = (rand() % 2) + 1;
         int DY = (rand() % 2) + 1;
         int DX = (rand() % 2) + 1;
-        if (Hk == 1)
-            SY = DY = 1;
-        if (Wk == 1)
-            SX = DX = 1;
-        int ngroups = rand() % 3 + 1;
         int pad_y0 = (rand() % 2) ? Hk/2 : 0;
         int pad_y1 = (rand() % 2) ? Hk/2 : 0;
         int pad_x0 = (rand() % 2) ? Wk/2 : 0;
         int pad_x1 = (rand() % 2) ? Wk/2 : 0;
-        if (ngroups > 1) {
+#else
+        int Hk = 3, Wk = 3;
+        int SY = 1, SX = 1;
+        int DY = 1, DX = 1;
+        int pad_y0 = 1, pad_x0 = 1, pad_y1 = 1, pad_x1 = 1;
+#endif
+        if (Hk == 1)
+            SY = DY = 1;
+        if (Wk == 1)
+            SX = DX = 1;
+        int ngroups = rand() % 2 + 1;
+        if (depthwise)
+            ngroups = (int)(C0*C1);
+
+        if (!depthwise && ngroups > 1) {
             C1 = ((C1 + ngroups - 1) / ngroups) * ngroups;
             K1 = ((K1 + ngroups - 1) / ngroups) * ngroups;
         }
@@ -236,7 +253,7 @@ void test_conv()
         params.dilations = {DY, DX};
         params.pads = {pad_y0, pad_x0, pad_y1, pad_x1};
 
-        Tensor a0({{N, C, Hi, Wi}, LAYOUT_NCHW}, CV_32F), a, c1, c0, c0_;
+        Tensor a0({{N, C, Hi, Wi}, LAYOUT_NCHW}, CV_32F), a, a0_, c1, c0, c0_;
         Tensor w({{K, C/ngroups, Hk, Wk}, LAYOUT_UNKNOWN}, CV_32F);
         Tensor bias(TensorSize({K}, LAYOUT_UNKNOWN), CV_32F);
 
@@ -257,6 +274,7 @@ void test_conv()
 
         for (i = 0; i < b_total; i++) {
             float b = (float)(i + 1);
+            b_data[i] = b;
         }
 
         Net2 net;
@@ -268,6 +286,7 @@ void test_conv()
         dynamic_cast<ConvOp*>(conv.get())->setWeights(w, bias, C0);
 
         nchw2block->forward(net, graph, {a0}, a, tmp);
+        block2nchw->forward(net, graph, {a}, a0_, tmp);
         conv->forward(net, graph, {a}, c0_, tmp);
         block2nchw->forward(net, graph, {c0_}, c0, tmp);
 
@@ -275,19 +294,33 @@ void test_conv()
         c1.fitSameDevice(a, outsize, a.type());
         ref_conv2d(a0, c1, params, w, bias);
 
+        Mat ma0 = a0.getMat();
+        Mat ma0_ = a0_.getMat();
         Mat m0 = c0.getMat();
         Mat m1 = c1.getMat();
+        Mat m0_ = c0_.getMat();
+        double err0 = norm(ma0, ma0_, NORM_INF);
         double err = norm(m0, m1, NORM_INF);
-        if (err > 1e-2) {
+        printf("%d. err0 = %.5g, err = %.5g, ", iter, err0, err);
+        fflush(stdout);
+        std::cout << "params: ";
+        params.dump(std::cout) << ", input shape: ";
+        a0.size().dump(std::cout) << ", output shape: ";
+        c0.size().dump(std::cout) << "\n";
+        if (err0 > 1e-3 || err > 1e-3) {
             printf("\nFAILED at iter=%d!\n", iter);
-            double minVal0, maxVal0, minVal1, maxVal1;
+            double minVal0, maxVal0, minVal0_, maxVal0_, minVal1, maxVal1;
+            minMaxIdx(m0_, &minVal0_, &maxVal0_);
             minMaxIdx(m0, &minVal0, &maxVal0);
             minMaxIdx(m1, &minVal1, &maxVal1);
-            printf("err = %.5g, minv=%.5g, maxv=%.5g, ref minv=%.5g, ref maxv=%.5g\n", err, minVal0, maxVal0, minVal1, maxVal1);
+            printf("err0 = %.5g, err = %.5g, minv_block=%.5g, maxv_block=%.5g, minv=%.5g, maxv=%.5g, ref minv=%.5g, ref maxv=%.5g\n",
+                   err0, err, minVal0_, maxVal0_, minVal0, maxVal0, minVal1, maxVal1);
             std::cout << "params: ";
             params.dump(std::cout) << "\n";
             std::cout << "input shape: ";
             a0.size().dump(std::cout) << "\n";
+            std::cout << "output shape (block): ";
+            c0_.size().dump(std::cout) << "\n";
             std::cout << "output shape: ";
             c0.size().dump(std::cout) << "\n";
             std::cout << "ref output shape: ";

@@ -238,8 +238,8 @@ public:
         nblocks = std::min(nblocks, allplanes);
 
         size_t esz = CV_ELEM_SIZE(inptype);
-        int64_t istep0, istep1=0, istep;
-        int64_t ostep0, ostep1=0, ostep;
+        int64_t istep0, istep1, istep;
+        int64_t ostep0, ostep1, ostep;
         int64_t C0_ = C, C1_ = 1;
 
         if (inplayout == LAYOUT_NCHWc || outlayout == LAYOUT_NCHWc) {
@@ -250,9 +250,11 @@ public:
         if (inplayout == LAYOUT_NCHW) {
             istep = 1;
             istep0 = planesize;
+            istep1 = planesize*C0_;
         } else if (inplayout == LAYOUT_NHWC) {
             istep = C;
             istep0 = 1;
+            istep1 = C0_;
         } else {
             istep = C0_;
             istep0 = 1;
@@ -262,9 +264,11 @@ public:
         if (outlayout == LAYOUT_NCHW) {
             ostep = 1;
             ostep0 = planesize;
+            ostep1 = planesize*C0_;
         } else if (outlayout == LAYOUT_NHWC) {
             ostep = C;
             ostep0 = 1;
+            ostep1 = C0_;
         } else {
             ostep = C0_;
             ostep0 = 1;

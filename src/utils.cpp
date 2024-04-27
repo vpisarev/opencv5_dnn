@@ -183,13 +183,14 @@ static ConvState initConvState_(const TensorSize& inpsize, const TensorSize& wsi
     ConvState cs;
     TensorSize outsize = convInferShape(inpsize, convparams);
 
-    int ndims = inpsize.ndims;
+    int ndims = inpsize.ndims, wdims = wsize.ndims, kdims = (int)convparams.ksizes.size();
     size_t nspatialdims = ndims - 3;
 
+    CV_Assert((size_t)std::max(wdims, kdims) >= nspatialdims);
     CV_Assert(inpsize.layout == LAYOUT_NCHWc);
     CV_Assert(1 <= nspatialdims && nspatialdims <= 2);
     int64_t N = outsize.size[0];
-    int64_t C1 = outsize.size[1], C0 = outsize.size[ndims-1];
+    int64_t C1 = inpsize.size[1], C0 = outsize.size[ndims-1];
     int64_t K1 = wsize.empty() ? C1 : wsize.size[0]/C0;
     int64_t W = outsize.size[ndims-2];
     int64_t H = nspatialdims > 1 ? outsize.size[ndims-3] : 1;
@@ -198,8 +199,8 @@ static ConvState initConvState_(const TensorSize& inpsize, const TensorSize& wsi
     int64_t SY = 1, SX = 1, DY = 1, DX = 1;
     int64_t pad_y0 = 0, pad_x0 = 0, pad_y1 = 0, pad_x1 = 0;
 
-    int64_t Wk = convparams.ksizes[nspatialdims-1];
-    int64_t Hk = nspatialdims > 1 ? convparams.ksizes[nspatialdims-2] : 1;
+    int64_t Wk = !wsize.empty() ? wsize.size[wdims-1] : convparams.ksizes[kdims-1];
+    int64_t Hk = nspatialdims == 1 ? 1 : !wsize.empty() ? wsize.size[wdims-2] : convparams.ksizes[kdims-2];
 
     if (!convparams.strides.empty()) {
         SX = convparams.strides[nspatialdims-1];
@@ -254,6 +255,7 @@ static ConvState initConvState_(const TensorSize& inpsize, const TensorSize& wsi
     cs.K1 = K1;
     cs.C1 = C1;
     cs.C0 = C0;
+    cs.C = inpsize.C;
     cs.H = H;
     cs.W = W;
     cs.Hi = Hi;
@@ -321,6 +323,11 @@ bool ConvState::sameShape(const ConvState& cs) const
         ngroups == cs.ngroups && H == cs.H && W == cs.W && Hi == cs.Hi && Wi == cs.Wi &&
         Hk == cs.Hk && Wk == cs.Wk && SY == cs.SY && SX == cs.SX && DY == cs.DY && DX == cs.DX &&
         pad_y0 == cs.pad_y0 && pad_x0 == cs.pad_x0 && pad_y1 == cs.pad_y1 && pad_x1 == cs.pad_x1;
+}
+
+void serial_for_(const Range& r, std::function<void (const Range&)> body, double)
+{
+    body(r);
 }
 
 }}

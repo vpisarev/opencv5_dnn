@@ -136,7 +136,7 @@ struct ConvState
     int64_t ngroups, K1;
     int64_t Hk, Wk, SY, SX, DY, DX;
     int64_t pad_y0, pad_x0, pad_y1, pad_x1;
-    int64_t N, Hi, Wi, H, W, C1, C0;
+    int64_t N, Hi, Wi, H, W, C1, C0, C;
     int64_t inner_y0, inner_x0, inner_y1, inner_x1;
     const int* yxtab;
     const int64_t* ofstab;
@@ -161,6 +161,18 @@ ConvState initConvState(const TensorSize& inpsize,
                         int* yxtab=nullptr, int64_t* ofstab=nullptr);
 
 void prindent(std::ostream& strm, int indent);
+
+typedef void (*depthwise_conv2d_t)(const void* inp__, void* out__,
+                                   const ConvState& cs,
+                                   const void* weights__,
+                                   const float* scale__,
+                                   const float* bias__);
+
+depthwise_conv2d_t getDepthwiseConv2DFunc(int depth);
+
+void repackDepthwiseConvWeights(const void* inpw, int inptype,
+                                void* outw, int outtype,
+                                const TensorSize& wsize, int64_t C0);
 
 }}
 

@@ -16,6 +16,8 @@ namespace dnn {
 //! @addtogroup dnn
 //! @{
 
+void serial_for_(const Range& r, std::function<void (const Range&)> body, double nblocks=0);
+
 enum TensorLayout
 {
     LAYOUT_UNKNOWN = 0,
