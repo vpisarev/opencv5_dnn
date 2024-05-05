@@ -407,6 +407,7 @@ public:
     const std::vector<Arg>& inputs() const;
     const std::vector<Arg>& outputs() const;
     void setOutputs(const std::vector<Arg>& outputs);
+    std::vector<Node>& prog();
     const std::vector<Node>& prog() const;
     OptimizedGraph getOptimized() const;
     void setOptimized(const OptimizedGraph& optigraph);
@@ -460,6 +461,17 @@ enum ModelFormat {
     DNN_MODEL_TF = 2
 };
 
+
+typedef std::pair<int64_t, std::string> OnnxOpSet;
+struct OnnxInfo
+{
+    int64_t IRVersion;
+    std::string producer;
+    std::string domain;
+    std::string docString;
+    std::vector<OnnxOpSet> opsets;
+};
+
 class CV_EXPORTS_W_SIMPLE Net2
 {
 public:
@@ -505,7 +517,8 @@ public:
     // if name is empty, always creates a new argument;
     // if it's not empty, returns argument with the specific name if it already exists,
     // otherwise creates new argument with the specified name
-    Arg getArg(std::string_view name) const;
+    Arg getArg(std::string_view name);
+    bool haveArg(std::string_view name) const;
 
     Arg newConstArg(std::string_view name, const Tensor& t) const;
     Arg newArg(std::string_view name, ArgKind kind) const;
@@ -535,7 +548,8 @@ public:
     int indent() const;
 
     ModelFormat modelFormat() const;
-    int onnxOpset() const;
+    OnnxInfo getOnnxInfo() const;
+    void setOnnxInfo(const OnnxInfo& info);
 
     struct Impl;
     std::shared_ptr<Impl> impl() const;

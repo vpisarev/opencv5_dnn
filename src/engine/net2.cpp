@@ -281,7 +281,7 @@ std::string_view Net2::argName(Arg arg) const { return argInfo(arg).name; }
 
 ArgKind Net2::argKind(Arg arg) const { return argInfo(arg).kind; }
 
-Arg Net2::getArg(std::string_view name) const
+Arg Net2::getArg(std::string_view name)
 {
     if (!name.empty()) {
         std::string name_(name);
@@ -291,6 +291,12 @@ Arg Net2::getArg(std::string_view name) const
         }
     }
     return newArg(name, DNN_ARG_TEMP);
+}
+
+bool Net2::haveArg(std::string_view name) const
+{
+    std::string name_(name);
+    return p->argnames.find(name_) != p->argnames.end();
 }
 
 Arg Net2::newConstArg(std::string_view name, const Tensor& t) const
@@ -445,6 +451,12 @@ std::ostream& Net2::dumpArg(std::ostream& strm, Arg arg, int indent, bool comma)
 
 int Net2::indent() const { return p->dump_indent; }
 ModelFormat Net2::modelFormat() const { return p->modelFormat; }
-int Net2::onnxOpset() const { return p->onnx_opset; }
+
+OnnxInfo Net2::getOnnxInfo() const { return p->onnxInfo; }
+void Net2::setOnnxInfo(const OnnxInfo& info) {
+    p->modelFormat = DNN_MODEL_ONNX;
+    p->defaultLayout = DNN_LAYOUT_NCHW;
+    p->onnxInfo = info;
+}
 
 }}

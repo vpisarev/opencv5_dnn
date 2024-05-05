@@ -92,6 +92,15 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
         float* scale = sum + C0;
         float* bias = scale + C0;
 
+        FastActivation fastActivation = cs.fastActivation;
+        const float* activParams = cs.activParams;
+        ElemwiseOp::activ_t activation = cs.activation;
+        float maxval = fastActivation == ACTIV_CLIP ? activParams[1] : FLT_MAX;
+        float alpha = fastActivation == ACTIV_LEAKY_RELU ? activParams[0] :
+                    fastActivation == ACTIV_NONE ? 1.f : 0.f;
+        v_float32 v_maxval = vx_setall_f32(maxval);
+        v_float32 v_alpha = vx_setall_f32(alpha);
+
         const float* inp = (const float*)inp__ + nc0*iplanesize;
         float* out = (float*)out__ + nc0*planesize;
         v_float32 z = vx_setzero_f32();
@@ -127,6 +136,7 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
                                 s0 = v_fma(v0, w0, s0);
                             }
                             s0 = v_fma(s0, sc0, b0);
+                            s0 = v_min(v_select(v_ge(s0, z), s0, v_mul(s0, v_alpha)), v_maxval);
                             vx_store(out + x0*C0, s0);
                         }
                     } else {
@@ -151,6 +161,8 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
                                 }
                                 s0 = v_fma(s0, vx_load(scale + c), vx_load(bias + c));
                                 s1 = v_fma(s1, vx_load(scale + c + nlanes), vx_load(bias + c + nlanes));
+                                s0 = v_min(v_select(v_ge(s0, z), s0, v_mul(s0, v_alpha)), v_maxval);
+                                s1 = v_min(v_select(v_ge(s1, z), s1, v_mul(s1, v_alpha)), v_maxval);
                                 vx_store(out + x0*C0 + c, s0);
                                 vx_store(out + x0*C0 + c + nlanes, s1);
                             }
@@ -172,6 +184,7 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
                                 s0 = v_fma(v0, w0, s0);
                             }
                             s0 = v_fma(s0, sc0, b0);
+                            s0 = v_min(v_select(v_ge(s0, z), s0, v_mul(s0, v_alpha)), v_maxval);
                             vx_store(out + x0*C0, s0);
                         }
                     } else if (nlanes*2 == C0) {
@@ -193,6 +206,8 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
                             }
                             s0 = v_fma(s0, sc0, b0);
                             s1 = v_fma(s1, sc1, b1);
+                            s0 = v_min(v_select(v_ge(s0, z), s0, v_mul(s0, v_alpha)), v_maxval);
+                            s1 = v_min(v_select(v_ge(s1, z), s1, v_mul(s1, v_alpha)), v_maxval);
                             vx_store(out + x0*C0, s0);
                             vx_store(out + x0*C0 + nlanes, s1);
                         }
@@ -221,6 +236,10 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
                                 s1 = v_fma(s1, vx_load(scale + c + nlanes), vx_load(bias + c + nlanes));
                                 s2 = v_fma(s2, vx_load(scale + c + nlanes*2), vx_load(bias + c + nlanes*2));
                                 s3 = v_fma(s3, vx_load(scale + c + nlanes*3), vx_load(bias + c + nlanes*3));
+                                s0 = v_min(v_select(v_ge(s0, z), s0, v_mul(s0, v_alpha)), v_maxval);
+                                s1 = v_min(v_select(v_ge(s1, z), s1, v_mul(s1, v_alpha)), v_maxval);
+                                s2 = v_min(v_select(v_ge(s2, z), s2, v_mul(s2, v_alpha)), v_maxval);
+                                s3 = v_min(v_select(v_ge(s3, z), s3, v_mul(s3, v_alpha)), v_maxval);
                                 vx_store(out + x0*C0 + c, s0);
                                 vx_store(out + x0*C0 + c + nlanes, s1);
                                 vx_store(out + x0*C0 + c + nlanes*2, s2);
@@ -230,6 +249,10 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
                     }
                     x1 = W;
                 }
+            }
+
+            if (activation) {
+                activation(out - planesize, out - planesize, planesize, activParams);
             }
         }
     });

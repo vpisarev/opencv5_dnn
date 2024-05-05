@@ -11,8 +11,6 @@ namespace cv { namespace dnn {
 
 typedef float16_t hfloat;
 
-typedef std::pair<int64_t, std::string> OnnxOpSet;
-
 struct OnnxTensorDim
 {
     OnnxTensorDim() : value(-1) {}
@@ -26,19 +24,10 @@ struct OnnxTensorDim
 
 struct OnnxArgInfo
 {
-    OnnxArgInfo() : typ(-1) {}
+    OnnxArgInfo() : type(-1) {}
     std::string name;
-    int typ;
-    std::vector<OnnxTensorDim> shape;
-};
-
-struct OnnxInfo
-{
-    int64_t IRVersion;
-    std::string producer;
-    std::string domain;
-    std::string docString;
-    std::vector<OnnxOpSet> opsets;
+    int type;
+    std::vector<OnnxTensorDim> size;
 };
 
 typedef std::unordered_map<std::string, int> NamesHash;

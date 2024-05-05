@@ -143,14 +143,30 @@ void GraphData::append(std::string_view node_name, const Op& op,
                        const std::vector<Arg>& inputs,
                        std::vector<Arg>& outputs)
 {
+    int i, noutputs = (int)outnames.size();
+    CV_Assert(op->minNumOutputs() <= noutputs && noutputs <= op->maxNumOutputs());
+    
+    outputs.resize(noutputs);
+    for (i = 0; i < noutputs; i++) {
+        Arg outarg = net_->getArg(outnames[i]);
+        ArgKind kind = net_->argKind(outarg);
+        CV_Assert(kind == DNN_ARG_TEMP || kind == DNN_ARG_OUTPUT);
+        outputs[i] = outarg;
+    }
 
+    Node n = std::make_shared<NodeData>(node_name, op, inputs, outputs);
+    prog_.push_back(n);
 }
 
 Arg GraphData::append(std::string_view node_name, const Op& op,
                       std::string_view outname,
                       const std::vector<Arg>& inputs)
 {
-
+    std::vector<std::string_view> outnames = {outname};
+    std::vector<Arg> outputs;
+    append(node_name, op, outnames, inputs, outputs);
+    CV_Assert(outputs.size() == 1);
+    return outputs[0];
 }
 
 bool GraphData::isPattern() const { return ispattern_; }

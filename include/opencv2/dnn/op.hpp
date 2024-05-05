@@ -246,7 +246,8 @@ CV_EXPORTS Arg tanh(Graph& graph, std::string_view opname,
 struct CV_EXPORTS ReduceOp : public BaseOp
 {
 public:
-    static Op create(ReduceOpcode opcode, bool keepdims=true, bool noOpWithEmptyAxes=false);
+    static Op create(ReduceOpcode opcode, bool keepdims=true,
+                     bool noOpWithEmptyAxes=false);
     virtual ~ReduceOp();
     ReduceOpcode opcode;
     bool keepdims;
