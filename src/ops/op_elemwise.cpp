@@ -154,6 +154,7 @@ static void activ_##name##_##suffix(const void* inptr_, void* outptr_, \
     CV_IMPLEMENT_UNARY_OP(name, 16f, hfloat, hfloat, float, op) \
     CV_IMPLEMENT_ACTIV_OP(name, 32f, float, float, float, op)
 
+#define CV_RECIP(x) (1/(x))
 #define CV_RELU(x) std::max((x), 0.f)
 #define CV_SIGN(x) (((x)>0.f)-((x)<0.f))
 #define CV_SIGMOID(x) (1.f/(1 + expf(-(x))))
@@ -174,6 +175,7 @@ CV_IMPLEMENT_MATH_OP(erf, erff)
 CV_IMPLEMENT_MATH_OP(exp, expf)
 CV_IMPLEMENT_MATH_OP(floor, floorf)
 CV_IMPLEMENT_MATH_OP(log, logf)
+CV_IMPLEMENT_MATH_OP(recip, CV_RECIP)
 CV_IMPLEMENT_MATH_OP(relu, CV_RELU)
 CV_IMPLEMENT_MATH_OP(round, roundf)
 CV_IMPLEMENT_MATH_OP(sigmoid, CV_SIGMOID)
@@ -463,6 +465,7 @@ std::string_view elemwiseOpcode2str(ElemwiseOpcode opcode_)
         names[ELWISE_MISH] = "Mish";
         names[ELWISE_NEG] = "Neg";
         names[ELWISE_NOT] = "Not";
+        names[ELWISE_RECIP] = "Recip";
         names[ELWISE_RELU] = "Relu";
         names[ELWISE_ROUND] = "Round";
         names[ELWISE_SIGMOID] = "Sigmoid";
@@ -556,6 +559,7 @@ ElemwiseOp::forward_t ElemwiseOp::getForwardSlice(ElemwiseOpcode opcode, int typ
     CV_INIT_MATH_FUNC_TAB(exp);
     CV_INIT_MATH_FUNC_TAB(floor);
     CV_INIT_MATH_FUNC_TAB(log);
+    CV_INIT_MATH_FUNC_TAB(recip);
     CV_INIT_MATH_FUNC_TAB(relu);
     CV_INIT_MATH_FUNC_TAB(round);
     CV_INIT_MATH_FUNC_TAB(sigmoid);
@@ -612,6 +616,7 @@ ElemwiseOp::forward_t ElemwiseOp::getForwardSlice(ElemwiseOpcode opcode, int typ
         //func_tabs[ELWISE_MISH] = mish_tab;
         func_tabs[ELWISE_NEG] = neg_tab;
         func_tabs[ELWISE_NOT] = not_tab;
+        func_tabs[ELWISE_RECIP] = recip_tab;
         func_tabs[ELWISE_RELU] = relu_tab;
         func_tabs[ELWISE_ROUND] = round_tab;
         func_tabs[ELWISE_SIGMOID] = sigmoid_tab;

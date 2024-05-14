@@ -38,6 +38,7 @@ struct Net2::Impl
     Impl(Net2* net_);
     ~Impl();
 
+    void initialize();
     void clear();
     void initArgs();
     void forwardGraph(const Graph& graph);
@@ -52,7 +53,7 @@ struct Net2::Impl
 
     void assignBuffers();
     void fuse();
-    void foldConstSubexpr();
+    void constFold();
 
     Net2* net;
     ModelFormat modelFormat;
@@ -78,6 +79,7 @@ struct Net2::Impl
     TensorLayout defaultLayout;
     bool enableFP16;
     bool haveFP16;
+    bool initialized;
     TracingMode tracingMode;
     ProfilingMode profilingMode;
     int accuracy;

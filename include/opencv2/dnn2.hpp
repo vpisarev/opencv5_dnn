@@ -478,6 +478,7 @@ public:
     Net2();  //!< Default constructor.
     ~Net2(); //!< Destructor frees the net only if there aren't references to the net anymore.
 
+    void initialize();
     void release();
     void forward(InputArrayOfArrays inputBlobs,
                  OutputArrayOfArrays outputBlobs);
@@ -521,6 +522,11 @@ public:
     bool haveArg(std::string_view name) const;
 
     Arg newConstArg(std::string_view name, const Tensor& t) const;
+    Arg newConstScalarArg(std::string_view name, int type, const void* value) const;
+    template<typename _Tp> Arg newConstScalarArg(std::string_view name, const _Tp& value) const
+    {
+        return newConstArg(name, Tensor::makeScalar(DataType<_Tp>::type, &value));
+    }
     Arg newArg(std::string_view name, ArgKind kind) const;
     Arg newPatternArg() const;
     bool isConstArg(Arg arg) const;

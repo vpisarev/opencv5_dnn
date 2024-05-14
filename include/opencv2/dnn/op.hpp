@@ -50,6 +50,7 @@ enum ElemwiseOpcode
     ELWISE_MISH,
     ELWISE_NEG,
     ELWISE_NOT,
+    ELWISE_RECIP,
     ELWISE_RELU,
     ELWISE_ROUND,
     ELWISE_SIGMOID,
@@ -289,6 +290,14 @@ CV_EXPORTS Arg reduceSumSquare(Graph& graph, std::string_view opname,
                                std::string_view outname, Arg input, Arg axes,
                                bool keepdims=true, bool noOpWithEmptyAxes=false);
 
+enum AutoPad
+{
+    AUTOPAD_NOTSET = 0,
+    AUTOPAD_SAME_UPPER = 1,
+    AUTOPAD_SAME_LOWER = 2,
+    AUTOPAD_VALID = 3
+};
+
 struct CV_EXPORTS ConvParams
 {
     std::vector<int> ksizes;
@@ -296,6 +305,7 @@ struct CV_EXPORTS ConvParams
     std::vector<int> dilations={};
     std::vector<int> pads={};
     int ngroups = 0;
+    AutoPad autopad = AUTOPAD_NOTSET;
     std::ostream& dump(std::ostream& strm);
 };
 
@@ -410,7 +420,7 @@ struct CV_EXPORTS ConstantOfShapeOp : public BaseOp
 
 CV_EXPORTS Arg constantOfShape(Graph& graph, std::string_view opname,
                                std::string_view outname,
-                               Arg shape, InputArray value);
+                               Arg shape, const Tensor& value);
 
 /*
     Convolution
@@ -441,10 +451,14 @@ struct CV_EXPORTS ConvTransposeOp : public BaseOp
     virtual ~ConvTransposeOp();
 
     ConvParams params;
+    std::vector<int> output_padding;
+    std::vector<int> output_shape;
 };
 
 CV_EXPORTS Arg convTranspose(Graph& graph, std::string_view opname, std::string_view outname,
-                             Arg input, Arg weights, Arg bias, const ConvParams& params);
+                             Arg input, Arg weights, Arg bias, const ConvParams& params,
+                             const std::vector<int>& output_padding=std::vector<int>(),
+                             const std::vector<int>& output_shape=std::vector<int>());
 
 /*
     Dropout
@@ -498,7 +512,7 @@ struct CV_EXPORTS GatherOp : public BaseOp
 };
 
 CV_EXPORTS Arg gather(Graph& graph, std::string_view opname,
-                      std::string_view outname, Arg input, Arg ind);
+                      std::string_view outname, Arg input, Arg ind, int axis=0);
 
 
 /*
@@ -514,8 +528,8 @@ struct CV_EXPORTS GemmOp : public BaseOp
 };
 
 CV_EXPORTS Arg gemm(Graph& graph, std::string_view opname,
-                    std::string_view outname, Arg A, Arg B, Arg bias);
-
+                    std::string_view outname, Arg A, Arg B, Arg bias,
+                    bool transA=false, bool transB=false, double alpha=1, double beta=1 );
 
 /*
     Global Average Pooling
