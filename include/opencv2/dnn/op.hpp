@@ -465,14 +465,12 @@ CV_EXPORTS Arg convTranspose(Graph& graph, std::string_view opname, std::string_
 */
 struct CV_EXPORTS DropoutOp : public BaseOp
 {
-    static Op create(int64_t seed);
+    static Op create();
     virtual ~DropoutOp();
-
-    int64_t seed;
 };
 
-CV_EXPORTS Arg dropout(Graph& graph, std::string_view opname, std::string_view outname,
-                       Arg input, Arg ratio, Arg trainingMode);
+CV_EXPORTS Arg dropout(Graph& graph, std::string_view opname,
+                       std::string_view outname, Arg input, Arg ratio);
 
 /*
     Expand
@@ -836,7 +834,7 @@ struct CV_EXPORTS SoftMaxOp : public BaseOp
     int axis;
 };
 
-CV_EXPORTS Arg softMax(Graph& graph, std::string_view opname,
+CV_EXPORTS Arg softmax(Graph& graph, std::string_view opname,
                        std::string_view outname, Arg input, int axis);
 
 

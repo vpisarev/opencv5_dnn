@@ -937,4 +937,30 @@ Op ElemwiseOp::create(ElemwiseOpcode opcode,
     return std::make_shared<ElemwiseOpImpl>(opcode, params, nparams);
 }
 
+Arg elemwise(Graph& graph, std::string_view opname,
+             std::string_view outname,
+             ElemwiseOpcode opcode, Arg input,
+             const float* params, size_t nparams)
+{
+    Op op = ElemwiseOp::create(opcode, params, nparams);
+    return graph->append(opname, op, outname, {input});
+}
+
+Arg elemwise(Graph& graph, std::string_view opname,
+             std::string_view outname,
+             ElemwiseOpcode opcode, Arg input0, Arg input1,
+             const float* params, size_t nparams)
+{
+    Op op = ElemwiseOp::create(opcode, params, nparams);
+    return graph->append(opname, op, outname, {input0, input1});
+}
+
+Arg elemwise(Graph& graph, std::string_view opname, std::string_view outname,
+             ElemwiseOpcode opcode, const std::vector<Arg>& inputs,
+             const float* params, size_t nparams)
+{
+    Op op = ElemwiseOp::create(opcode, params, nparams);
+    return graph->append(opname, op, outname, inputs);
+}
+
 }}

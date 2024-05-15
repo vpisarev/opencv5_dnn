@@ -4,12 +4,11 @@
 
 #include "../precomp.hpp"
 #include "../engine/engine.hpp"
-#include "opencv2/core/hal/intrin.hpp"
 
 namespace cv { namespace dnn {
 
-Arg split(Graph& graph, std::string_view opname, std::string_view outname,
-          Arg input, Arg split, int axis, size_t noutputs)
+Arg dropout(Graph& graph, std::string_view opname,
+            std::string_view outname, Arg input, Arg ratio)
 {
 
 }

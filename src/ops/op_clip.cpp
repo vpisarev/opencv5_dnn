@@ -8,12 +8,11 @@
 
 namespace cv { namespace dnn {
 
-Arg convTranspose(Graph& graph, std::string_view opname, std::string_view outname,
-                  Arg input, Arg weights, Arg bias, const ConvParams& params,
-                  const std::vector<int>& output_padding,
-                  const std::vector<int>& output_shape)
+Arg clip(Graph& graph, std::string_view opname,
+         std::string_view outname, Arg input, Arg minval, Arg maxval)
 {
 
 }
 
 }}
+

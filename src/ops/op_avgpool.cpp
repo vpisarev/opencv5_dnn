@@ -12,8 +12,7 @@ Arg averagePool(Graph& graph, std::string_view opname,
                 std::string_view outname, Arg input,
                 const ConvParams& params, bool countIncludePadding)
 {
-    Op op = AveragePoolOp::create(params, countIncludePadding);
-    return graph->append(opname, op, outname, {input});
+    
 }
 
 }}

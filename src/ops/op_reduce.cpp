@@ -568,4 +568,95 @@ Op ReduceOp::create(ReduceOpcode opcode, bool keepdims, bool noOpWithEmptyAxes)
     return std::make_shared<ReduceOpImpl>(opcode, keepdims, noOpWithEmptyAxes);
 }
 
+Arg reduce(Graph& graph, std::string_view opname, std::string_view outname,
+           ReduceOpcode opcode, Arg input, Arg axes,
+           bool keepdims, bool noOpWithEmptyAxes)
+{
+    Op op = ReduceOp::create(opcode, keepdims, noOpWithEmptyAxes);
+    std::vector<Arg> inputs = {input};
+    if (!axes.empty())
+        inputs.push_back(axes);
+    return graph->append(opname, op, outname, inputs);
+}
+
+Arg reduceL1(Graph& graph, std::string_view opname,
+             std::string_view outname, Arg input, Arg axes,
+             bool keepdims, bool noOpWithEmptyAxes)
+{
+    return reduce(graph, opname, outname, REDUCE_L1,
+                  input, axes, keepdims, noOpWithEmptyAxes);
+}
+
+Arg reduceL2(Graph& graph, std::string_view opname,
+             std::string_view outname, Arg input, Arg axes,
+             bool keepdims, bool noOpWithEmptyAxes)
+{
+    return reduce(graph, opname, outname, REDUCE_L2,
+                  input, axes, keepdims, noOpWithEmptyAxes);
+}
+
+Arg reduceLogSum(Graph& graph, std::string_view opname,
+                 std::string_view outname, Arg input, Arg axes,
+                 bool keepdims, bool noOpWithEmptyAxes)
+{
+    return reduce(graph, opname, outname, REDUCE_LOGSUM,
+                  input, axes, keepdims, noOpWithEmptyAxes);
+}
+
+Arg reduceLogSumExp(Graph& graph, std::string_view opname,
+                    std::string_view outname, Arg input, Arg axes,
+                    bool keepdims, bool noOpWithEmptyAxes)
+{
+    return reduce(graph, opname, outname, REDUCE_LOGSUMEXP,
+                  input, axes, keepdims, noOpWithEmptyAxes);
+}
+
+Arg reduceMax(Graph& graph, std::string_view opname,
+              std::string_view outname, Arg input, Arg axes,
+              bool keepdims, bool noOpWithEmptyAxes)
+{
+    return reduce(graph, opname, outname, REDUCE_MAX,
+                  input, axes, keepdims, noOpWithEmptyAxes);
+}
+
+Arg reduceMean(Graph& graph, std::string_view opname,
+               std::string_view outname, Arg input, Arg axes,
+               bool keepdims, bool noOpWithEmptyAxes)
+{
+    return reduce(graph, opname, outname, REDUCE_MEAN,
+                  input, axes, keepdims, noOpWithEmptyAxes);
+}
+
+Arg reduceMin(Graph& graph, std::string_view opname,
+              std::string_view outname, Arg input, Arg axes,
+              bool keepdims, bool noOpWithEmptyAxes)
+{
+    return reduce(graph, opname, outname, REDUCE_MIN,
+                  input, axes, keepdims, noOpWithEmptyAxes);
+}
+
+Arg reduceProd(Graph& graph, std::string_view opname,
+               std::string_view outname, Arg input, Arg axes,
+               bool keepdims, bool noOpWithEmptyAxes)
+{
+    return reduce(graph, opname, outname, REDUCE_PROD,
+                  input, axes, keepdims, noOpWithEmptyAxes);
+}
+
+Arg reduceSum(Graph& graph, std::string_view opname,
+              std::string_view outname, Arg input, Arg axes,
+              bool keepdims, bool noOpWithEmptyAxes)
+{
+    return reduce(graph, opname, outname, REDUCE_SUM,
+                  input, axes, keepdims, noOpWithEmptyAxes);
+}
+
+Arg reduceSumSquare(Graph& graph, std::string_view opname,
+                    std::string_view outname, Arg input, Arg axes,
+                    bool keepdims, bool noOpWithEmptyAxes)
+{
+    return reduce(graph, opname, outname, REDUCE_SUM_SQUARE,
+                  input, axes, keepdims, noOpWithEmptyAxes);
+}
+
 }}

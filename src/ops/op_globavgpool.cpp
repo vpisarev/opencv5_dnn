@@ -327,4 +327,11 @@ Op GlobalAveragePoolOp::create()
     return std::make_shared<GlobalAveragePoolOpImpl>();
 }
 
+Arg globalAveragePool(Graph& graph, std::string_view opname,
+                      std::string_view outname, Arg input)
+{
+    Op op = GlobalAveragePoolOp::create();
+    return graph->append(opname, op, outname, {input});
+}
+
 }}

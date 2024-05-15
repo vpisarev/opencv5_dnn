@@ -154,5 +154,13 @@ Op ReshapeOp::create(bool allowzero)
     return std::make_shared<ReshapeOpImpl>(allowzero);
 }
 
+Arg reshape(Graph& graph, std::string_view opname,
+            std::string_view outname, Arg input,
+            Arg shape, bool allowzero)
+{
+    Op op = ReshapeOp::create(allowzero);
+    return graph->append(opname, op, outname, {input, shape});
+}
+
 }}
 

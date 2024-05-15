@@ -124,4 +124,14 @@ Op SqueezeOp::create()
     return std::make_shared<SqueezeOpImpl>();
 }
 
+Arg squeeze(Graph& graph, std::string_view opname,
+            std::string_view outname, Arg input, Arg axes)
+{
+    Op op = SqueezeOp::create();
+    std::vector<Arg> inputs = {input};
+    if (!axes.empty())
+        inputs.push_back(axes);
+    return graph->append(opname, op, outname, inputs);
+}
+
 }}

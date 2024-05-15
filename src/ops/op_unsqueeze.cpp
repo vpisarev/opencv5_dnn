@@ -119,4 +119,11 @@ Op UnsqueezeOp::create()
     return std::make_shared<UnsqueezeOpImpl>();
 }
 
+Arg unsqueeze(Graph& graph, std::string_view opname,
+              std::string_view outname, Arg input, Arg axes)
+{
+    Op op = UnsqueezeOp::create();
+    return graph->append(opname, op, outname, {input, axes});
+}
+
 }}

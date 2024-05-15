@@ -654,5 +654,16 @@ Op ConvOp::create(const ConvParams& params)
     return std::make_shared<ConvOpImpl>(params);
 }
 
+Arg conv(Graph& graph, std::string_view opname, std::string_view outname,
+         Arg input, Arg weights, Arg bias, const ConvParams& params)
+{
+    Op op = ConvOp::create(params);
+    std::vector<Arg> inputs = {input, weights};
+    if (!bias.empty())
+        inputs.push_back(bias);
+    
+    return graph->append(opname, op, outname, inputs);
+}
+
 }}
 

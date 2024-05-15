@@ -115,4 +115,11 @@ Op FlattenOp::create(int axis)
     return std::make_shared<FlattenOpImpl>(axis);
 }
 
+Arg flatten(Graph& graph, std::string_view opname,
+            std::string_view outname, Arg input, int axis)
+{
+    Op op = FlattenOp::create(axis);
+    return graph->append(opname, op, outname, {input});
+}
+
 }}

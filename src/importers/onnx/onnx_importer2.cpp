@@ -119,8 +119,6 @@ protected:
                           Graph&, const vector<Arg>&, const vector<Arg>&);
     void parseInstanceNormalization(string_view, const OpenCVOnnx__NodeProto*,
                                     Graph&, const vector<Arg>&, const vector<Arg>&);*/
-    void parseLeakyRelu(string_view, const OpenCVOnnx__NodeProto*,
-                        Graph&, const vector<Arg>&, const vector<Arg>&);
     void parseLRN(string_view, const OpenCVOnnx__NodeProto*,
                   Graph&, const vector<Arg>&, const vector<Arg>&);
     /*void parseLSTM(string_view, const OpenCVOnnx__NodeProto*,
@@ -801,7 +799,6 @@ void OnnxImporter2::init(Net2& net)
     //dispatch["GRU"] = &OnnxImporter2::parseGRU;
     //dispatch["ImageScaler"] = &OnnxImporter2::parseImageScaler;
     //dispatch["InstanceNormalization"] = &OnnxImporter2::parseInstanceNormalization;
-    dispatch["LeakyRelu"] = &OnnxImporter2::parseLeakyRelu;
     dispatch["LRN"] = &OnnxImporter2::parseLRN;
     //dispatch["LSTM"] = &OnnxImporter2::parseLSTM;
     dispatch["MatMul"] = &OnnxImporter2::parseMatMul;
@@ -826,7 +823,7 @@ void OnnxImporter2::init(Net2& net)
         "Abs", "Acos", "Acosh", "Asin", "Asinh", "Atan", "Atanh",
         "Ceil", "Celu", "Cos", "Cosh", "Elu", "Erf",
         "Exp", "Floor", "HardSigmoid", "HardSwish", "Identity",
-        "Log", "Neg", "Relu", "Round", "Reciprocal", "Selu",
+        "LeakyRelu", "Log", "Neg", "Relu", "Round", "Reciprocal", "Selu",
         "Sign", "Sigmoid", "Sin", "Sinh", "Softplus",
         "Softsign", "Shrink", "Sqrt", "Tan", "Tanh", "ThresholdedRelu" };
     for (const auto& name : elemwiseUnaryOps)
@@ -919,7 +916,7 @@ void OnnxImporter2::parseConcat(string_view ctx, const OpenCVOnnx__NodeProto* no
     OnnxAssert(ctx, outputs.size() == 1);
 
     bool haveAxis = false;
-    int axis = (int)onnxAttrInt(ctx, node_proto, "axis", -1, &haveAxis);
+    int axis = onnxAttrInt(ctx, node_proto, "axis", -1, &haveAxis);
     OnnxAssert(ctx, haveAxis);
 
     concat(graph, node_proto->name, node_proto->output[0], inputs, axis);
@@ -1017,9 +1014,10 @@ void OnnxImporter2::parseDropout(string_view ctx, const OpenCVOnnx__NodeProto* n
     if (ninputs >= 2)
         ratio = inputs[1];
     else
-        ratio = net->newConstScalarArg(node_proto->name + string(".ratio"), onnxAttrFloat(ctx, node_proto, "ratio", 0.5f));
+        ratio = net->newConstScalarArg(node_proto->name + string(".ratio"),
+                                       onnxAttrFloat(ctx, node_proto, "ratio", 0.5f));
 
-    dropout(graph, node_proto->name, node_proto->output[0], inputs[0], ratio, Arg());
+    dropout(graph, node_proto->name, node_proto->output[0], inputs[0], ratio);
 }
 
 // Equal, Greater, Less, Pow, Add, Sub, Mul, Div, ...
@@ -1379,7 +1377,7 @@ void OnnxImporter2::parseSoftmax(string_view ctx, const OpenCVOnnx__NodeProto* n
     OnnxAssert(ctx, outputs.size() == 1);
 
     int axis = onnxAttrInt(ctx, node_proto, "axis", -1);
-    softMax(graph, node_proto->name, node_proto->output[0], inputs[0], axis);
+    softmax(graph, node_proto->name, node_proto->output[0], inputs[0], axis);
 }
 
 void OnnxImporter2::parseSplit(string_view ctx, const OpenCVOnnx__NodeProto* node_proto, Graph& graph,

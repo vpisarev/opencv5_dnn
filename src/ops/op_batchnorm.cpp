@@ -214,4 +214,13 @@ Op BatchNormOp::create(double epsilon_)
     return std::make_shared<BatchNormOpImpl>(epsilon_);
 }
 
+Arg batchNorm(Graph& graph, std::string_view opname,
+              std::string_view outname,
+              Arg input, Arg scale, Arg B, Arg mean,
+              Arg variance, double epsilon)
+{
+    Op op = BatchNormOp::create(epsilon);
+    return graph->append(opname, op, outname, {input, scale, B, mean, variance});
+}
+
 }}

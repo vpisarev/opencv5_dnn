@@ -10,10 +10,11 @@ namespace cv { namespace dnn {
 TransposeOp::~TransposeOp() {}
 
 template <typename _Tp>
-void transform_layout(const _Tp* inp_, int64_t istep, int64_t istep0, int64_t istep1,
-                      _Tp* out_, int64_t ostep, int64_t ostep0, int64_t ostep1,
-                      int64_t npix, int64_t C0, int64_t C1, int64_t C)
+void transpose(const _Tp* inp_, int64_t istep, int64_t istep0, int64_t istep1,
+               _Tp* out_, int64_t ostep, int64_t ostep0, int64_t ostep1,
+               int64_t npix, int64_t C0, int64_t C1, int64_t C)
 {
+    
     CV_Assert(C0 % 8 == 0 || C0 == 4 || C1 == 1);
     CV_Assert(istep0 == 1 || ostep0 == 1);
     const int64_t dC0 = std::min(C0, (int64_t)8);
@@ -69,20 +70,20 @@ void transform_layout(const _Tp* inp_, int64_t istep, int64_t istep0, int64_t is
     }
 }
 
-#undef CV_TRANSFORM_LAYOUT_IMPL
-#define CV_TRANSFORM_LAYOUT_IMPL(typ, suffix) \
+#undef CV_TRANSPOSE_IMPL
+#define CV_TRANSPOSE_IMPL(typ, suffix) \
 static void transpose_##suffix(const void* inp_, int64_t istep, int64_t istep0, int64_t istep1, \
-                                      void* out_, int64_t ostep, int64_t ostep0, int64_t ostep1, \
-                                      int64_t npix, int64_t C0, int64_t C1, int64_t C) \
+                               void* out_, int64_t ostep, int64_t ostep0, int64_t ostep1, \
+                               int64_t npix, int64_t C0, int64_t C1, int64_t C) \
 { \
-    transform_layout((const typ*)inp_, istep, istep0, istep1, \
-                     (typ*)out_, ostep, ostep0, ostep1, npix, C0, C1, C); \
+    transpose((const typ*)inp_, istep, istep0, istep1, \
+              (typ*)out_, ostep, ostep0, ostep1, npix, C0, C1, C); \
 }
 
-CV_TRANSFORM_LAYOUT_IMPL(uint8_t, 8u)
-CV_TRANSFORM_LAYOUT_IMPL(uint16_t, 16u)
-CV_TRANSFORM_LAYOUT_IMPL(uint32_t, 32u)
-CV_TRANSFORM_LAYOUT_IMPL(uint64_t, 64u)
+CV_TRANSPOSE_IMPL(uint8_t, 8u)
+CV_TRANSPOSE_IMPL(uint16_t, 16u)
+CV_TRANSPOSE_IMPL(uint32_t, 32u)
+CV_TRANSPOSE_IMPL(uint64_t, 64u)
 
 typedef void (*transpose_func_t)(const void* inp, int64_t istep, int64_t istep0, int64_t istep1,
                                         void* out, int64_t ostep, int64_t ostep0, int64_t ostep1,
@@ -228,10 +229,11 @@ public:
         char* outptr0 = (char*)out.data();
 
         transpose_func_t transpose_func =
-            esz == 1 ? transpose_8u :
-            esz == 2 ? transpose_16u :
-            esz == 4 ? transpose_32u :
-            esz == 8 ? transpose_64u : nullptr;
+            //esz == 1 ? transpose_8u :
+            //esz == 2 ? transpose_16u :
+            //esz == 4 ? transpose_32u :
+            //esz == 8 ? transpose_64u :
+            nullptr;
 
         CV_Assert(transpose_func != nullptr);
 #if 0
@@ -258,6 +260,13 @@ public:
 Op TransposeOp::create(const std::vector<int>& perm)
 {
     return std::make_shared<TransposeOpImpl>(perm);
+}
+
+Arg transpose(Graph& graph, std::string_view opname, std::string_view outname,
+              Arg input, const std::vector<int>& perm)
+{
+    Op op = TransposeOp::create(perm);
+    return graph->append(opname, op, outname, {input});
 }
 
 }}

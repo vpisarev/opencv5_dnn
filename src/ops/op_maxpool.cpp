@@ -416,4 +416,12 @@ Op MaxPoolOp::create(const ConvParams& params, bool computeIndices, bool rowMajo
     return std::make_shared<MaxPoolOpImpl>(params, computeIndices, rowMajorOrder);
 }
 
+Arg maxPool(Graph& graph, std::string_view opname,
+            std::string_view outname, Arg input, const ConvParams& params,
+            bool computeIndices, bool rowMajorOrder)
+{
+    Op op = MaxPoolOp::create(params, computeIndices, rowMajorOrder);
+    return graph->append(opname, op, outname, {input});
+}
+
 }}
