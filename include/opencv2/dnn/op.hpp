@@ -38,6 +38,7 @@ enum ElemwiseOpcode
     ELWISE_ATANH,
     ELWISE_CEIL,
     ELWISE_CLIP,
+    ELWISE_CLIPS,
     ELWISE_COS,
     ELWISE_COSH,
     ELWISE_ERF,
@@ -120,8 +121,10 @@ public:
     static activ_t getActivation(ElemwiseOpcode opcode, int type);
     virtual forward_t getForwardSlice(int type) const;
     virtual activ_t getActivation(int type) const;
+    virtual void setParams(const std::vector<Tensor>& ts) = 0;
     ElemwiseOpcode opcode;
     float params[MAX_PARAMS];
+    size_t nparams;
 };
 
 CV_EXPORTS Arg elemwise(Graph& graph, std::string_view opname, std::string_view outname,
@@ -197,6 +200,8 @@ CV_EXPORTS Arg ceil(Graph& graph, std::string_view opname,
                     std::string_view outname, Arg input);
 CV_EXPORTS Arg clip(Graph& graph, std::string_view opname,
                     std::string_view outname, Arg input, Arg minval, Arg maxval);
+CV_EXPORTS Arg clip(Graph& graph, std::string_view opname,
+                    std::string_view outname, Arg input, float minval, float maxval);
 CV_EXPORTS Arg cos(Graph& graph, std::string_view opname,
                    std::string_view outname, Arg input);
 CV_EXPORTS Arg cosh(Graph& graph, std::string_view opname,
@@ -431,12 +436,13 @@ struct CV_EXPORTS ConvOp : public BaseOp
     virtual ~ConvOp();
 
     virtual void setWeights(const Tensor& weights, const Tensor& bias, int64_t C0, int accuracy=-1) = 0;
-    virtual void fuseBatchNorm(const Op& batchNorm) = 0;
-    virtual void fuseActivation(const Op& activ) = 0;
+    virtual bool fuseBatchNorm(const Op& batchNorm) = 0;
+    virtual bool fuseActivation(const Op& activ) = 0;
 
     ConvParams params;
     Op batchNorm; // fused batch norm, if any
     Op activ; // fused activation, if any
+    bool add_residual;
 };
 
 CV_EXPORTS Arg conv(Graph& graph, std::string_view opname, std::string_view outname,
@@ -518,16 +524,21 @@ CV_EXPORTS Arg gather(Graph& graph, std::string_view opname,
 */
 struct CV_EXPORTS GemmOp : public BaseOp
 {
-    static Op create(double alpha, double beta, bool transA, bool transB);
+    static Op create(bool transA, bool transB, double alpha, double beta);
     virtual ~GemmOp();
+    
+    virtual void setWeights(const Tensor& weights, const Tensor& bias, int accuracy=-1) = 0;
+    virtual void fuseActivation(const Op& activ) = 0;
 
     double alpha, beta;
     bool transA, transB;
+    Op activ; // fused activation, if any
 };
 
 CV_EXPORTS Arg gemm(Graph& graph, std::string_view opname,
                     std::string_view outname, Arg A, Arg B, Arg bias,
-                    bool transA=false, bool transB=false, double alpha=1, double beta=1 );
+                    bool transA=false, bool transB=false,
+                    double alpha=1, double beta=1);
 
 /*
     Global Average Pooling

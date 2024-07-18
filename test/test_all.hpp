@@ -7,13 +7,17 @@
 
 #include <stdio.h>
 #include <iostream>
-#include "opencv2/dnn2.hpp"
+#include "opencv2/opencv.hpp"
 #include "test_utils.hpp"
 
 namespace cv {
 namespace dnn {
 
 void test_0d();
+
+void test_import_onnx();
+void test_imgclassify();
+
 void test_conv();
 void test_elemwise();
 void test_flatten();

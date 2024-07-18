@@ -3,7 +3,7 @@
 // of this distribution and at http://opencv.org/license.html.
 
 #include "../precomp.hpp"
-#include "../engine/engine.hpp"
+#include "../engine/net2_impl.hpp"
 #include "opencv2/core/hal/intrin.hpp"
 
 namespace cv { namespace dnn {
@@ -152,9 +152,11 @@ static void repackConvWeights(const void* inpw__, int inptype_, void* outw__, in
     });
 }
 
-static void conv2d_32f(const void* inp__, void* out__, const ConvState& cs,
-                       const void* weights__, const float* scale__, const float* bias__,
-                       const int32_t* ofs0__, const int32_t** ofsptrs__, const uint8_t* mask__)
+static void conv2d_32f(const void* inp__, const void* residual__, void* out__,
+                       const ConvState& cs, const void* weights__,
+                       const float* scale__, const float* bias__,
+                       const int32_t* ofs0__, const int32_t** ofsptrs__,
+                       const uint8_t* mask__)
 {
     int nlanes_ = VTraits<v_float32>::vlanes();
     int C0_ = (int)cs.C0;
@@ -165,9 +167,6 @@ static void conv2d_32f(const void* inp__, void* out__, const ConvState& cs,
     int64_t NK1 = cs.N*cs.K1;
 
     parallel_for_(Range(0, (int)NK1), [&](const Range& r) {
-        const void* inp_ = inp__;
-        void* out_ = out__;
-        const void* weights_ = weights__;
         const float* scale_ = scale__;
         const float* bias_ = bias__;
         const int32_t* ofs0_ = ofs0__;
@@ -193,7 +192,6 @@ static void conv2d_32f(const void* inp__, void* out__, const ConvState& cs,
         float* bias = sum + BLOCK_SIZE*K0*2;
         const float* inptrs[BLOCK_SIZE];
         const int32_t* ofsptrs[BLOCK_SIZE];
-        const float* weights = (const float*)weights_;
         FastActivation fastActivation = cs.fastActivation;
         const float* activParams = cs.activParams;
         ElemwiseOp::activ_t activation = cs.activation;
@@ -201,19 +199,18 @@ static void conv2d_32f(const void* inp__, void* out__, const ConvState& cs,
         float alpha = fastActivation == ACTIV_LEAKY_RELU ? activParams[0] :
                     fastActivation == ACTIV_NONE ? 1.f : 0.f;
 
-        for (int64_t b = 0; b < BLOCK_SIZE; b++) {
-            for (int64_t k = 0; k < K0; k++) {
-                scale[b*K0 + k] = 1.f;
-                bias[b*K0 + k] = 0.f;
-            }
+        for (int64_t j = 0; j < BLOCK_SIZE*K0; j++) {
+            scale[j] = 1.f;
+            bias[j] = 0.f;
         }
 
         for (int64_t nk = nk0; nk < nk1; nk++) {
             int64_t n = nk/K1, k1 = nk - n*K1;
             int64_t g = k1/K1g;
-            float* out = (float*)out_ + nk*planesize*K0;
-            const float* inp0 = (const float*)inp_ + (n*C1 + g*C1g)*iplanesize*C0;
-            const float* wptr = (const float*)weights + k1*nC;
+            float* out = (float*)out__ + nk*planesize*K0;
+            const float* inp0 = (const float*)inp__ + (n*C1 + g*C1g)*iplanesize*C0;
+            const float* resptr = residual__ ? (const float*)residual__ + nk*planesize*K0 : nullptr;
+            const float* wptr = (const float*)weights__ + k1*nC;
 
             if (scale_) {
                 for (int64_t b = 0; b < BLOCK_SIZE; b++)
@@ -227,7 +224,8 @@ static void conv2d_32f(const void* inp__, void* out__, const ConvState& cs,
                         bias[b*K0 + k] = bias_[k1*K0 + k];
             }
 
-            for (int64_t xy0 = 0; xy0 < W0*H0; xy0 += BLOCK_SIZE, out += K0*BLOCK_SIZE) {
+            for (int64_t xy0 = 0; xy0 < W0*H0; xy0 += BLOCK_SIZE, out += K0*BLOCK_SIZE,
+                                               resptr += (resptr ? K0*BLOCK_SIZE : 0)) {
                 int64_t j = 0, blocksize = std::min(W0*H0 - xy0, BLOCK_SIZE);
 
                 for (; j < blocksize; j++) {
@@ -263,16 +261,31 @@ static void conv2d_32f(const void* inp__, void* out__, const ConvState& cs,
                 }
 
                 if (activation) {
-                    for (j = 0; j < blocksize*K0; j++) {
-                        float v = sum[j]*scale[j] + bias[j];
-                        sum[j] = v;
+                    if (resptr) {
+                        for (j = 0; j < blocksize*K0; j++) {
+                            float v = sum[j]*scale[j] + bias[j] + resptr[j];
+                            sum[j] = v;
+                        }
+                    } else {
+                        for (j = 0; j < blocksize*K0; j++) {
+                            float v = sum[j]*scale[j] + bias[j];
+                            sum[j] = v;
+                        }
                     }
                     activation(sum, out, blocksize*K0, activParams);
                 } else {
-                    for (j = 0; j < blocksize*K0; j++) {
-                        float v = sum[j]*scale[j] + bias[j];
-                        v = std::min(v*(v >= 0 ? 1.f : alpha), maxval);
-                        out[j] = v;
+                    if (resptr) {
+                        for (j = 0; j < blocksize*K0; j++) {
+                            float v = sum[j]*scale[j] + bias[j] + resptr[j];
+                            v = std::min(v*(v >= 0 ? 1.f : alpha), maxval);
+                            out[j] = v;
+                        }
+                    } else {
+                        for (j = 0; j < blocksize*K0; j++) {
+                            float v = sum[j]*scale[j] + bias[j];
+                            v = std::min(v*(v >= 0 ? 1.f : alpha), maxval);
+                            out[j] = v;
+                        }
                     }
                 }
             }
@@ -280,8 +293,9 @@ static void conv2d_32f(const void* inp__, void* out__, const ConvState& cs,
     });
 }
 
-static void conv2d_1x1_32f(const void* inp__, void* out__, const ConvState& cs,
-                           const void* weights__, const float* scale__, const float* bias__,
+static void conv2d_1x1_32f(const void* inp__, const void* residual__, void* out__,
+                           const ConvState& cs, const void* weights__,
+                           const float* scale__, const float* bias__,
                            const int32_t*, const int32_t**, const uint8_t*)
 {
     int nlanes_ = VTraits<v_float32>::vlanes();
@@ -289,15 +303,12 @@ static void conv2d_1x1_32f(const void* inp__, void* out__, const ConvState& cs,
 
     CV_Assert(C0_ == nlanes_ || C0_ == nlanes_*2 || C0_ % (nlanes_*4) == 0);
     CV_Assert(cs.activation == nullptr || cs.fastActivation == ACTIV_NONE);
-    CV_Assert(cs.Hk == 1 && cs.Wk == 1 && cs.SY == 1 && cs.SX == 1 && cs.DY == 1 && cs.DX == 1);
+    CV_Assert(cs.Hk == 1 && cs.Wk == 1);
     CV_Assert(cs.pad_y0 == 0 && cs.pad_x0 == 0 && cs.pad_y1 == 0 && cs.pad_x1 == 0);
 
     int64_t NK1 = cs.N*cs.K1;
 
     parallel_for_(Range(0, (int)NK1), [&](const Range& r) {
-        const void* inp_ = inp__;
-        void* out_ = out__;
-        const void* weights_ = weights__;
         const float* scale_ = scale__;
         const float* bias_ = bias__;
         constexpr int64_t BLOCK_SIZE = 10;
@@ -308,7 +319,6 @@ static void conv2d_1x1_32f(const void* inp__, void* out__, const ConvState& cs,
         int64_t iplanesize = Hi*Wi;
         int64_t planesize = H0*W0;
         int64_t SY = cs.SY, SX = cs.SX;
-        int64_t DY = cs.DY, DX = cs.DX;
         int64_t Hk = cs.Hk, Wk = cs.Wk;
         int64_t C1 = cs.C1, K1 = cs.K1;
         int64_t ngroups = cs.ngroups, K1g = K1/ngroups, C1g = C1/ngroups;
@@ -318,27 +328,26 @@ static void conv2d_1x1_32f(const void* inp__, void* out__, const ConvState& cs,
         float* scale = sum + BLOCK_SIZE*K0;
         float* bias = sum + BLOCK_SIZE*K0*2;
         const float* inptrs[BLOCK_SIZE];
-        const float* weights = (const float*)weights_;
         FastActivation fastActivation = cs.fastActivation;
         const float* activParams = cs.activParams;
         ElemwiseOp::activ_t activation = cs.activation;
         float maxval = fastActivation == ACTIV_CLIP ? activParams[1] : FLT_MAX;
         float alpha = fastActivation == ACTIV_LEAKY_RELU ? activParams[0] :
                     fastActivation == ACTIV_NONE ? 1.f : 0.f;
+        bool S1 = SY == 1 && SX == 1;
 
-        for (int64_t b = 0; b < BLOCK_SIZE; b++) {
-            for (int64_t k = 0; k < K0; k++) {
-                scale[b*K0 + k] = 1.f;
-                bias[b*K0 + k] = 0.f;
-            }
+        for (int64_t j = 0; j < BLOCK_SIZE*K0; j++) {
+            scale[j] = 1.f;
+            bias[j] = 0.f;
         }
 
         for (int64_t nk = nk0; nk < nk1; nk++) {
             int64_t n = nk/K1, k1 = nk - n*K1;
             int64_t g = k1/K1g;
-            float* out = (float*)out_ + nk*planesize*K0;
-            const float* inp0 = (const float*)inp_ + (n*C1 + g*C1g)*iplanesize*C0;
-            const float* wptr = (const float*)weights + k1*nC;
+            float* out = (float*)out__ + nk*planesize*K0;
+            const float* inp0 = (const float*)inp__ + (n*C1 + g*C1g)*iplanesize*C0;
+            const float* resptr = residual__ ? (const float*)residual__ + nk*planesize*K0 : nullptr;
+            const float* wptr = (const float*)weights__ + k1*nC;
 
             if (scale_) {
                 for (int64_t b = 0; b < BLOCK_SIZE; b++)
@@ -352,11 +361,24 @@ static void conv2d_1x1_32f(const void* inp__, void* out__, const ConvState& cs,
                         bias[b*K0 + k] = bias_[k1*K0 + k];
             }
 
-            for (int64_t xy0 = 0; xy0 < W0*H0; xy0 += BLOCK_SIZE, out += K0*BLOCK_SIZE) {
+            int64_t yiWi = 0, xi = 0;
+            for (int64_t xy0 = 0; xy0 < W0*H0; xy0 += BLOCK_SIZE, out += K0*BLOCK_SIZE,
+                                               resptr += (resptr ? K0*BLOCK_SIZE : 0))
+            {
                 int64_t j = 0, blocksize = std::min(W0*H0 - xy0, BLOCK_SIZE);
 
-                for (; j < blocksize; j++) {
-                    inptrs[j] = inp0 + (xy0 + j)*C0;
+                if (S1) {
+                    for (; j < blocksize; j++) {
+                        inptrs[j] = inp0 + (xy0 + j)*C0;
+                    }
+                } else {
+                    for (; j < blocksize; j++) {
+                        inptrs[j] = inp0 + (yiWi + xi)*C0;
+                        if ((xi += SX) >= Wi) {
+                            yiWi += Wi*SY;
+                            xi = 0;
+                        }
+                    }
                 }
 
                 if (j < BLOCK_SIZE) {
@@ -383,16 +405,31 @@ static void conv2d_1x1_32f(const void* inp__, void* out__, const ConvState& cs,
                 }
 
                 if (activation) {
-                    for (j = 0; j < blocksize*K0; j++) {
-                        float v = sum[j]*scale[j] + bias[j];
-                        sum[j] = v;
+                    if (resptr) {
+                        for (j = 0; j < blocksize*K0; j++) {
+                            float v = sum[j]*scale[j] + bias[j] + resptr[j];
+                            sum[j] = v;
+                        }
+                    } else {
+                        for (j = 0; j < blocksize*K0; j++) {
+                            float v = sum[j]*scale[j] + bias[j];
+                            sum[j] = v;
+                        }
                     }
                     activation(sum, out, blocksize*K0, activParams);
                 } else {
-                    for (j = 0; j < blocksize*K0; j++) {
-                        float v = sum[j]*scale[j] + bias[j];
-                        v = std::min(v*(v >= 0 ? 1.f : alpha), maxval);
-                        out[j] = v;
+                    if (resptr) {
+                        for (j = 0; j < blocksize*K0; j++) {
+                            float v = sum[j]*scale[j] + bias[j] + resptr[j];
+                            v = std::min(v*(v >= 0 ? 1.f : alpha), maxval);
+                            out[j] = v;
+                        }
+                    } else {
+                        for (j = 0; j < blocksize*K0; j++) {
+                            float v = sum[j]*scale[j] + bias[j];
+                            v = std::min(v*(v >= 0 ? 1.f : alpha), maxval);
+                            out[j] = v;
+                        }
                     }
                 }
             }
@@ -401,8 +438,9 @@ static void conv2d_1x1_32f(const void* inp__, void* out__, const ConvState& cs,
 }
 
 
-typedef void (*conv_func_t)(const void* inp, void* out, const ConvState& cs,
-                            const void* weights, const float* scale, const float* bias,
+typedef void (*conv_func_t)(const void* inp, const void* residual, void* out,
+                            const ConvState& cs, const void* weights,
+                            const float* scale, const float* bias,
                             const int32_t* ofs0, const int32_t** ofsptrs,
                             const uint8_t* mask);
 
@@ -412,6 +450,7 @@ public:
     ConvOpImpl(const ConvParams& convparams_)
     {
         params = convparams_;
+        add_residual = false;
     }
     virtual std::string_view name() const CV_OVERRIDE { return "Conv"; }
     virtual Op clone() const CV_OVERRIDE
@@ -419,10 +458,57 @@ public:
         return std::make_shared<ConvOpImpl>(params);
     }
 
-    virtual int minNumInputs() const CV_OVERRIDE { return 1; }
-    virtual int maxNumInputs() const CV_OVERRIDE { return 3; }
+    virtual int minNumInputs() const CV_OVERRIDE { return 1 + (add_residual ? 1 : 0); }
+    virtual int maxNumInputs() const CV_OVERRIDE { return 3 + (add_residual ? 1 : 0); }
     virtual int minNumOutputs() const CV_OVERRIDE { return 1; }
     virtual int maxNumOutputs() const CV_OVERRIDE { return 1; }
+
+    virtual std::ostream& dumpAttrs(std::ostream& strm, int indent) const CV_OVERRIDE
+    {
+        prindent(strm, indent);
+        strm << "ngroup: " << params.ngroups << ",\n";
+
+        /*prindent(strm, indent);
+        strm << "ksizes: [";
+        for (int k = 0; k < wsize0.ndims; k++)
+            strm << (k > 0 ? ", " : "") << wsize0.size[k];
+        strm << "],\n";*/
+
+        prindent(strm, indent);
+        strm << "dilations: [";
+        for (size_t k = 0; k < params.dilations.size(); k++)
+            strm << (k > 0 ? ", " : "") << params.dilations[k];
+        strm << "],\n";
+
+        prindent(strm, indent);
+        strm << "pads: [";
+        for (size_t k = 0; k < params.pads.size(); k++)
+            strm << (k > 0 ? ", " : "") << params.pads[k];
+        strm << "],\n";
+
+        prindent(strm, indent);
+        strm << "strides: [";
+        for (size_t k = 0; k < params.strides.size(); k++)
+            strm << (k > 0 ? ", " : "") << params.strides[k];
+        strm << "],\n";
+
+        if (batchNorm) {
+            prindent(strm, indent);
+            strm << "batch_norm: true,\n";
+        }
+
+        if (add_residual) {
+            prindent(strm, indent);
+            strm << "add_residual: true,\n";
+        }
+
+        if (activ) {
+            prindent(strm, indent);
+            strm << "activation: " << activ->name() << ",\n";
+        }
+
+        return strm;
+    }
 
     int inferType(int inptype0) const
     {
@@ -437,6 +523,11 @@ public:
     virtual bool alwaysSupportInplace() const CV_OVERRIDE
     {
         return false;
+    }
+
+    virtual int supportBlockLayout(int input, int ninputs) const CV_OVERRIDE
+    {
+        return input == 0 || (add_residual && input == ninputs-1) ? 1 : -1;
     }
 
     virtual void setWeights(const Tensor& weights_, const Tensor& bias_,
@@ -507,21 +598,22 @@ public:
         }
     }
 
-    virtual void fuseBatchNorm(const Op& op) override
+    virtual bool fuseBatchNorm(const Op& op) override
     {
         BatchNormOp* bn = dynamic_cast<BatchNormOp*>(op.get());
-        CV_Assert(!batchNorm);
-        CV_Assert(bn != nullptr);
+        if (batchNorm || !bn)
+            return false;
         batchNorm = op;
+        return true;
     }
 
-    virtual void fuseActivation(const Op& op) override
+    virtual bool fuseActivation(const Op& op) override
     {
         ElemwiseOp* activ_ptr = dynamic_cast<ElemwiseOp*>(op.get());
-        CV_Assert(activ_ptr->maxNumInputs() == 1);
-        CV_Assert(!activ);
-        CV_Assert(activ_ptr != nullptr);
+        if (activ_ptr->maxNumInputs() != 1 || activ || !activ_ptr || !activ_ptr->getActivation(CV_32F))
+            return false;
         activ = op;
+        return true;
     }
 
     virtual int64_t getFLOPS(const std::vector<SizeType> &inputs,
@@ -536,25 +628,39 @@ public:
         return (int64_t)((inputs[0].size.total()/C)*ksize/params.ngroups);
     }
 
-    virtual void inferShapes(const Net2& net, const Graph& graph,
+    virtual void inferTypes(const Net2& net, const Graph& graph,
                             const std::vector<Arg>& inpargs,
-                            const std::vector<SizeType>& inpst,
+                            const std::vector<int>& inptypes,
                             const std::vector<Arg>& outargs,
-                            std::vector<SizeType>& outst,
-                            std::vector<size_t>& tempbufs) const CV_OVERRIDE
+                            std::vector<int>& outtypes) const CV_OVERRIDE
+    {
+        int ninputs = (int)inpargs.size(), noutputs = (int)outargs.size();
+        CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
+        CV_Assert((int)inptypes.size() == ninputs);
+        CV_Assert(noutputs == 1);
+
+        outtypes.resize(1);
+        outtypes[0] = inferType(inptypes[0]);
+    }
+
+    virtual void inferShapes(Net2& net, const Graph& graph,
+                             const std::vector<Arg>& inpargs,
+                             const std::vector<TensorSize>& inpshapes,
+                             const std::vector<Arg>& outargs,
+                             std::vector<TensorSize>& outshapes,
+                             bool symbolic) const CV_OVERRIDE
     {
         int ninputs = (int)inpargs.size(), noutputs = (int)outargs.size();
         CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
         CV_Assert(noutputs == 1);
-        outst.resize(1);
+        outshapes.resize(1);
+        if (add_residual)
+            ninputs--;
 
-        const TensorSize& inpsize = inpst[0].size;
-        TensorSize wsize = ninputs > 1 ? inpst[1].size : wsize0;
-        TensorSize& outsize = outst[0].size;
+        const TensorSize& inpsize = inpshapes[0];
+        TensorSize wsize = ninputs > 1 ? inpshapes[1] : wsize0;
 
-        outsize = convInferShape(inpsize, params, wsize);
-        outst[0].type = inferType(inpst[0].type);
-        tempbufs.assign(1, (size_t)0);
+        outshapes[0] = convInferShape(net, inpsize, params, wsize, symbolic);
     }
 
     virtual void forward(Net2& net, Graph& graph,
@@ -565,21 +671,36 @@ public:
         size_t ninputs = inputs.size();
         CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
         const Tensor& inp = inputs[0];
-        int inptype = inp.type(), outtype = inferType(inptype);
+        const Tensor* residual = nullptr;
+        const void* resptr = nullptr;
+        int inptype = inp.type();
         TensorSize inpsize = inp.size();
         CV_Assert(inpsize.layout == LAYOUT_NCHWc);
         CV_Assert(inp.isContinuous());
 
-        if (ninputs > 1) {
+        if (add_residual) {
+            residual = &inputs[ninputs-1];
+            resptr = residual->data();
+            ninputs--;
+        }
+
+        bool dynamic_weights = ninputs > 1;
+        if (dynamic_weights) {
             setWeights(inputs[1], ninputs > 2 ? inputs[2] : Tensor(),
                        inpsize.size[inpsize.ndims-1], net.getAccuracy());
         }
 
-        TensorSize outsize = convInferShape(inpsize, params, wsize0);
+        TensorSize outsize = convInferShape(net, inpsize, params, wsize0);
+        int outtype = inferType(inptype);
         outputs.resize(1);
         Tensor& out = outputs[0];
         out.fitSameDevice(inp, outsize, outtype);
         CV_Assert(out.isContinuous());
+
+        if (add_residual) {
+            CV_Assert(outsize == residual->size());
+            CV_Assert(outtype == residual->type());
+        }
 
         CV_Assert(inpsize.layout == LAYOUT_NCHWc);
         int nspatialdims = inpsize.ndims - 3;
@@ -588,9 +709,9 @@ public:
         if (inp.empty())
             return;
 
-        const char* inptr0 = (const char*)inp.data();
-        char* outptr0 = (char*)out.data();
-        const char* wptr0 = (const char*)weights.data();
+        const void* inptr = inp.data();
+        void* outptr = out.data();
+        const void* wptr = weights.data();
 
         int64_t ksize = 1;
         for (int i = 0; i < nspatialdims; i++)
@@ -599,7 +720,7 @@ public:
         int64_t* ofstab = buf.data();
         int* yxtab = (int*)(ofstab + ksize);
 
-        ConvState cs = initConvState(inpsize, wsize0, params, activ, yxtab, ofstab);
+        ConvState cs = initConvState(net, inpsize, wsize0, params, activ, yxtab, ofstab);
         bool conv1x1 = cs.Hk == 1 && cs.Wk == 1;
         bool depthwise = cs.ngroups == cs.C;
         const float* bias_data = bias.ptr<float>();
@@ -613,7 +734,7 @@ public:
             depthwise_conv2d_t func = getDepthwiseConv2DFunc(inptype);
             CV_Assert(func != nullptr);
 
-            func(inptr0, outptr0, cs, wptr0,
+            func(inptr, resptr, outptr, cs, wptr,
                  fused_scale.ptr<float>(), bias_data);
         } else {
             if (!conv1x1 && (ofs0.empty() || !cs.sameShape(prev_cs))) {
@@ -626,14 +747,15 @@ public:
                 (inptype == CV_32F ? conv2d_32f : nullptr);
             CV_Assert(func != nullptr);
 
-            func(inptr0, outptr0, cs, wptr0,
+            func(inptr, resptr, outptr, cs, wptr,
                  fused_scale.ptr<float>(), bias_data, ofs0.data(),
                  (const int32_t**)ofsptrs.data(), mask.data());
         }
 
-        if (ninputs > 1) {
+        if (dynamic_weights) {
             // to keep memory footprint low in the case of
-            // very rare situation of dynamic convolution weights
+            // very rare situation of dynamic convolution weights,
+            // we release temporarily allocated and reordered copy of the weights
             weights.release();
         }
     }

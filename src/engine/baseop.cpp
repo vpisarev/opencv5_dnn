@@ -3,7 +3,7 @@
 // of this distribution and at http://opencv.org/license.html.
 
 #include "../precomp.hpp"
-#include "../engine/engine.hpp"
+#include "../engine/net2_impl.hpp"
 
 namespace cv { namespace dnn {
 
@@ -83,6 +83,11 @@ bool BaseOp::supportInplace(const Net2&, const Graph&,
                     const std::vector<SizeType>&) const
 {
     return alwaysSupportInplace();
+}
+
+int BaseOp::supportBlockLayout(int, int) const
+{
+    return -1; // most operations don't support block layout
 }
 
 int64_t BaseOp::getFLOPS(const std::vector<SizeType>&,

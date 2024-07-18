@@ -3,7 +3,7 @@
 // of this distribution and at http://opencv.org/license.html.
 
 #include "../precomp.hpp"
-#include "../engine/engine.hpp"
+#include "../engine/net2_impl.hpp"
 
 namespace cv { namespace dnn {
 
@@ -16,7 +16,11 @@ static void finalizeBlockLayout(TensorSize& size)
         int64_t C0 = size.size[size.ndims-1];
         CV_Assert(C0 > 1 && (C0 & (C0-1)) == 0);
         size.C = (int64_t)size.size[1]*size.size[size.ndims-1];
+    } else {
+        size.C = 0;
     }
+    for (int i = size.ndims; i < TensorSize::MAX_DIMS; i++)
+        size.size[i] = 0;
 }
 
 TensorSize::TensorSize()
@@ -24,7 +28,8 @@ TensorSize::TensorSize()
     layout = LAYOUT_UNKNOWN;
     ndims = 1;
     C = 0;
-    size[0] = 0;
+    for (int i = 0; i < MAX_DIMS; i++)
+        size[i] = 0;
 }
 
 TensorSize::TensorSize(int ndims_, const int64_t* size_, TensorLayout layout_)
@@ -63,6 +68,15 @@ size_t TensorSize::total() const
 bool TensorSize::empty() const
 {
     return total() == 0;
+}
+
+bool TensorSize::haveSymbols() const
+{
+    for (size_t i = 0; i < ndims; i++) {
+        if (size[i] < 0)
+            return true;
+    }
+    return false;
 }
 
 TensorSize TensorSize::fromArray(InputArray m, TensorLayout layout_)
@@ -162,6 +176,10 @@ TensorSize TensorSize::expand(const TensorSize& another) const
 bool operator == (const TensorSize& size1, const TensorSize& size2)
 {
     if (size1.ndims != size2.ndims)
+        return false;
+    if (size1.layout != size2.layout &&
+        size1.layout != LAYOUT_UNKNOWN &&
+        size2.layout != LAYOUT_UNKNOWN)
         return false;
     if (size1.layout == LAYOUT_NCHWc &&
         size2.layout == LAYOUT_NCHWc &&
@@ -653,6 +671,19 @@ static void cvtScalar(int srctype, const void* src, int dsttype, void* dst, doub
         else
             ((int64_t*)dst)[i] = 0;
     }
+}
+
+bool Tensor::getScalar(int dtype, void* scalar) const
+{
+    int stype = type();
+    CV_Assert(CV_MAT_CN(dtype) == 1);
+    CV_Assert(CV_MAT_CN(stype) == 1);
+    CV_Assert(total() == 1);
+    double temp;
+    const void* p = data();
+    cvtScalar(stype, p, dtype, scalar, &temp, 1);
+
+    return true;
 }
 
 void Tensor::setTo(int vtype, const void* value0)

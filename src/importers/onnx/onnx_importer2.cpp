@@ -18,7 +18,7 @@
 #include <set>
 #include <string>
 
-#include "../../engine/engine.hpp"
+#include "../../engine/net2_impl.hpp"
 #include "opencv-onnx-pb-c.h"
 
 namespace cv {
@@ -84,7 +84,8 @@ protected:
                        Graph&, const vector<Arg>&, const vector<Arg>&);
     void parseConstantOfShape(string_view, const OpenCVOnnx__NodeProto*,
                               Graph&, const vector<Arg>&, const vector<Arg>&);
-    ConvParams parseConvParams(string_view ctx, const OpenCVOnnx__NodeProto* node_proto);
+    ConvParams parseConvParams(string_view ctx, const OpenCVOnnx__NodeProto* node_proto,
+                               bool always_depthwise);
     void parseConv(string_view, const OpenCVOnnx__NodeProto*,
                    Graph&, const vector<Arg>&, const vector<Arg>&);
     void parseConvTranspose(string_view, const OpenCVOnnx__NodeProto*,
@@ -432,7 +433,7 @@ static Tensor onnxAttrTensor(string_view ctx, const OpenCVOnnx__NodeProto* node_
 
 
 template<typename _Tp>
-static int onnxAttrInt(string_view ctx,
+static _Tp onnxAttrInt(string_view ctx,
                        const OpenCVOnnx__NodeProto* node_proto,
                        string_view attr_name,
                        _Tp defval, bool* have_attr=nullptr)
@@ -614,7 +615,7 @@ static const OpenCVOnnx__GraphProto* onnxAttrGraph(string_view ctx,
 
 Graph OnnxImporter2::parseGraph(const OpenCVOnnx__GraphProto* proto, bool subgraph)
 {
-    string ctx = subgraph ? string() : "parsing subgraph '" + string(proto->name) + "'";
+    string ctx = !subgraph ? string() : "parsing subgraph '" + string(proto->name) + "'";
     vector<OnnxArgInfo> inputs, outputs, values;
     vector<OnnxTensor> initializers;
     vector<Arg> node_inputs, node_outputs;
@@ -631,8 +632,19 @@ Graph OnnxImporter2::parseGraph(const OpenCVOnnx__GraphProto* proto, bool subgra
         ArgKind argkind = k == 0 ? DNN_ARG_INPUT : k == 1 ? DNN_ARG_OUTPUT : DNN_ARG_TEMP;
         if (subgraph) argkind = DNN_ARG_TEMP;
         const vector<OnnxArgInfo>* graph_args = k == 0 ? &inputs : k == 1 ? &outputs : &values;
-        for (const OnnxArgInfo& arginfo: *graph_args) {
-            Arg arg = net->newArg(arginfo.name, argkind);
+        for (const OnnxArgInfo& onnxinfo: *graph_args) {
+            Arg arg = net->newArg(onnxinfo.name, argkind);
+            ArgInfo& info = const_cast<ArgInfo&>(net->argInfo(arg));
+            info.type = onnxinfo.type;
+            int64_t size[TensorSize::MAX_DIMS];
+            int i, ndims = (int)onnxinfo.size.size();
+            CV_Assert(ndims < TensorSize::MAX_DIMS);
+            for (i = 0; i < ndims; i++) {
+                const OnnxTensorDim& dim = onnxinfo.size[i];
+                size[i] = !dim.param.empty() ? net->findDim(dim.param, true) : dim.value;
+            }
+            TensorLayout layout = ndims == 4 ? LAYOUT_NCHW : ndims == 2 ? LAYOUT_ND : LAYOUT_UNKNOWN;
+            info.size = TensorSize(ndims, size, layout);
             if (k == 0)
                 node_inputs.push_back(arg);
             else if (k == 1)
@@ -774,8 +786,10 @@ bool OnnxImporter2::parse(const char* buffer, size_t datasize)
     return ok;
 }
 
-void OnnxImporter2::init(Net2& net)
+void OnnxImporter2::init(Net2& net_)
 {
+    net = &net_;
+
     DispatchMap dispatch, msdispatch;
 
     //dispatch["ArgMax"] = dispatch["ArgMin"] = &OnnxImporter2::parseArg;
@@ -956,13 +970,18 @@ void OnnxImporter2::parseConstantOfShape(string_view ctx, const OpenCVOnnx__Node
 }
 
 
-ConvParams OnnxImporter2::parseConvParams(string_view ctx, const OpenCVOnnx__NodeProto* node_proto)
+ConvParams OnnxImporter2::parseConvParams(string_view ctx,
+                                          const OpenCVOnnx__NodeProto* node_proto,
+                                          bool always_depthwise)
 {
     ConvParams params;
     onnxAttrInts(ctx, node_proto, "kernel_shape", params.ksizes);
     onnxAttrInts(ctx, node_proto, "strides", params.strides);
     onnxAttrInts(ctx, node_proto, "dilations", params.dilations);
-    params.ngroups = onnxAttrInt(ctx, node_proto, "group", 1);
+    if (always_depthwise)
+        params.ngroups = 0;
+    else
+        params.ngroups = onnxAttrInt(ctx, node_proto, "group", 1);
 
     if (onnxHaveAttr(ctx, node_proto, "pads")) {
         onnxAttrInts(ctx, node_proto, "pads", params.pads);
@@ -982,7 +1001,7 @@ void OnnxImporter2::parseConv(string_view ctx, const OpenCVOnnx__NodeProto* node
     OnnxAssert(ctx, ninputs == 2 || ninputs == 3);
     OnnxAssert(ctx, outputs.size() == 1);
 
-    ConvParams params = parseConvParams(ctx, node_proto);
+    ConvParams params = parseConvParams(ctx, node_proto, false);
     conv(graph, node_proto->name, node_proto->output[0], inputs[0], inputs[1], ninputs >= 3 ? inputs[2] : Arg(), params);
 }
 
@@ -992,7 +1011,7 @@ void OnnxImporter2::parseConvTranspose(string_view ctx, const OpenCVOnnx__NodePr
     size_t ninputs = inputs.size();
     OnnxAssert(ctx, ninputs == 2 || ninputs == 3);
     OnnxAssert(ctx, outputs.size() == 1);
-    ConvParams params = parseConvParams(ctx, node_proto);
+    ConvParams params = parseConvParams(ctx, node_proto, false);
 
     std::vector<int> output_padding, output_shape;
 
@@ -1221,14 +1240,15 @@ void OnnxImporter2::parsePooling(string_view ctx, const OpenCVOnnx__NodeProto* n
                                  const vector<Arg>& inputs, const vector<Arg>& outputs)
 {
     string_view op = node_proto->op_type;
-    PoolingType pooling = op == "AveragePool" ? POOLING_AVGPOOL :
-    op == "MaxPool" ? POOLING_MAXPOOL :
-    POOLING_UNKNOWN;
+    PoolingType pooling =
+        op == "AveragePool" ? POOLING_AVGPOOL :
+        op == "MaxPool" ? POOLING_MAXPOOL :
+        POOLING_UNKNOWN;
 
     size_t ninputs = inputs.size(), noutputs = outputs.size();
     OnnxAssert(ctx, ninputs == 1);
 
-    ConvParams params = parseConvParams(ctx, node_proto);
+    ConvParams params = parseConvParams(ctx, node_proto, true);
 
     if (pooling == POOLING_AVGPOOL) {
         OnnxAssert(ctx, noutputs == 1);
@@ -1456,13 +1476,13 @@ void OnnxImporter2::parseUnsqueeze(string_view ctx, const OpenCVOnnx__NodeProto*
     unsqueeze(graph, node_proto->name, node_proto->output[0], inputs[0], axes);
 }
 
-Net2 readNetFromONNX2(string_view onnxFile)
+Net2 readNetFromONNX2(string_view onnxFile, const OnnxReaderParams& params)
 {
     Net2 net;
     OnnxImporter2 importer(net, onnxFile);
     if (net.empty())
         return net;
-    net.initialize();
+    net.prepare();
     return net;
 }
 

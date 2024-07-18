@@ -27,6 +27,8 @@ enum TensorLayout
     LAYOUT_NCHWc = 4
 };
 
+CV_EXPORTS std::string layoutToString(TensorLayout layout);
+
 struct CV_EXPORTS TensorSize
 {
     TensorSize();
@@ -42,6 +44,7 @@ struct CV_EXPORTS TensorSize
     // the new layout must be explicitly specified and be NCHW or NHWC
     TensorSize fromBlock(TensorLayout newLayout) const;
     TensorSize expand(const TensorSize& another) const;
+    bool haveSymbols() const;
     size_t total() const;
     bool empty() const;
     std::ostream& dump(std::ostream& strm) const;
@@ -273,6 +276,8 @@ struct CV_EXPORTS Arg
     int idx;
 };
 
+CV_EXPORTS bool operator == (const Arg& a, const Arg& b);
+
 enum ArgKind { DNN_ARG_EMPTY=0, DNN_ARG_CONST, DNN_ARG_INPUT, DNN_ARG_OUTPUT, DNN_ARG_TEMP, DNN_ARG_PATTERN };
 
 struct CV_EXPORTS ArgInfo
@@ -316,15 +321,22 @@ public:
     virtual bool supportInplace(const Net2& net, const Graph& graph,
                                 const std::vector<Arg>& inpargs,
                                 const std::vector<SizeType>& inpst) const;
+    // 1 - yes (only block layout), 0 - support any layout, -1 - no (only non-block layout)
+    virtual int supportBlockLayout(int input, int ninputs) const;
 
     virtual int64_t getFLOPS(const std::vector<SizeType> &inputs,
                            const std::vector<SizeType> &outputs) const;
-    virtual void inferShapes(const Net2& net, const Graph& graph,
+    virtual void inferTypes(const Net2& net, const Graph& graph,
                             const std::vector<Arg>& inpargs,
-                            const std::vector<SizeType>& inpst,
+                            const std::vector<int>& inptypes,
                             const std::vector<Arg>& outargs,
-                            std::vector<SizeType>& outst,
-                            std::vector<size_t>& tempbufs) const = 0;
+                            std::vector<int>& outtypes) const = 0;
+    virtual void inferShapes(Net2& net, const Graph& graph,
+                             const std::vector<Arg>& inpargs,
+                             const std::vector<TensorSize>& inpshapes,
+                             const std::vector<Arg>& outargs,
+                             std::vector<TensorSize>& outshapes,
+                             bool symbolic) const = 0;
     virtual void forward(Net2& net, Graph& graph,
                         const std::vector<Tensor>& inputs,
                         std::vector<Tensor>& outputs,
@@ -346,16 +358,26 @@ public:
          const std::vector<Arg>& outputs,
          const std::vector<Graph>& subgraphs=std::vector<Graph>());
     ~NodeData();
+    static Node create(const std::string_view name, const Op& op,
+                       const std::vector<Arg>& inputs,
+                       const std::vector<Arg>& outputs,
+                       const std::vector<Graph>& subgraphs=std::vector<Graph>());
     Node clone(Net2* newnet=nullptr) const;
 
     std::ostream& dump(const Net2& net, std::ostream& strm,
                        int indent, bool comma) const;
 
     std::string_view name() const;
-    Op op() const;
+    Op& op() const;
     const std::vector<Arg>& inputs() const;
     const std::vector<Arg>& outputs() const;
     const std::vector<Graph>& subgraphs() const;
+    Arg inputs(size_t idx) const;
+    Arg outputs(size_t idx) const;
+    Graph subgraphs(size_t idx) const;
+    size_t ninputs() const;
+    size_t noutputs() const;
+    size_t nsubgraphs() const;
 
 protected:
     std::string name_;
@@ -407,8 +429,8 @@ public:
     const std::vector<Arg>& inputs() const;
     const std::vector<Arg>& outputs() const;
     void setOutputs(const std::vector<Arg>& outputs);
-    std::vector<Node>& prog();
     const std::vector<Node>& prog() const;
+    void setProg(const std::vector<Node>& newprog);
     OptimizedGraph getOptimized() const;
     void setOptimized(const OptimizedGraph& optigraph);
 
@@ -478,7 +500,7 @@ public:
     Net2();  //!< Default constructor.
     ~Net2(); //!< Destructor frees the net only if there aren't references to the net anymore.
 
-    void initialize();
+    void prepare();
     void release();
     void forward(InputArrayOfArrays inputBlobs,
                  OutputArrayOfArrays outputBlobs);
@@ -537,6 +559,9 @@ public:
     int argType(Arg arg) const;
     SizeType argSizeType(Arg arg) const;
 
+    int64_t findDim(std::string_view name=std::string_view(), bool insert=false);
+    std::string dimToString(int64_t size) const;
+
     bool useBackend(std::string_view backendSpec); // CUDA:1, iGPU, NPU:0, ...
     bool useBackend(GraphBackend* backend); // the latest added backend gets the highest priority
     bool removeBackend(GraphBackend* backend);
@@ -550,7 +575,7 @@ public:
     void setDumpStream(std::ostream* ostrm) const;
     std::ostream* getDumpStream() const;
     std::ostream& dump(std::ostream* strm=nullptr) const;
-    std::ostream& dumpArg(std::ostream& strm, Arg arg, int indent, bool comma=true) const;
+    std::ostream& dumpArg(std::ostream& strm, Arg arg, int indent, bool comma=true, bool dump_details=false) const;
     int indent() const;
 
     ModelFormat modelFormat() const;
@@ -558,7 +583,7 @@ public:
     void setOnnxInfo(const OnnxInfo& info);
 
     struct Impl;
-    std::shared_ptr<Impl> impl() const;
+    Impl* impl() const;
 private:
     std::shared_ptr<Impl> p;
 };

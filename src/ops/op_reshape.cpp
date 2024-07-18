@@ -3,7 +3,7 @@
 // of this distribution and at http://opencv.org/license.html.
 
 #include "../precomp.hpp"
-#include "../engine/engine.hpp"
+#include "../engine/net2_impl.hpp"
 #include <math.h>
 
 namespace cv { namespace dnn {
@@ -48,6 +48,21 @@ public:
     {
         CV_Assert(inputs.size() == 1);
         return (int64_t)inputs[0].size.total();
+    }
+
+    virtual void inferTypes(const Net2& net, const Graph& graph,
+                            const std::vector<Arg>& inpargs,
+                            const std::vector<int>& inptypes,
+                            const std::vector<Arg>& outargs,
+                            std::vector<int>& outtypes) const CV_OVERRIDE
+    {
+        int ninputs = (int)inpargs.size(), noutputs = (int)outargs.size();
+        CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
+        CV_Assert((int)inptypes.size() == ninputs);
+        CV_Assert(noutputs == 1);
+
+        outtypes.resize(1);
+        outtypes[0] = inferType(inptypes[0]);
     }
 
     TensorSize inferShapes_(const TensorSize& inpsize, const Tensor& shape) const
@@ -112,23 +127,21 @@ public:
         return outsize;
     }
 
-    virtual void inferShapes(const Net2& net, const Graph& graph,
-                            const std::vector<Arg>& inpargs,
-                            const std::vector<SizeType>& inpst,
-                            const std::vector<Arg>& outargs,
-                            std::vector<SizeType>& outst,
-                            std::vector<size_t>& tempbufs) const CV_OVERRIDE
+    virtual void inferShapes(Net2& net, const Graph& graph,
+                             const std::vector<Arg>& inpargs,
+                             const std::vector<TensorSize>& inpshapes,
+                             const std::vector<Arg>& outargs,
+                             std::vector<TensorSize>& outshapes,
+                             bool symbolic) const CV_OVERRIDE
     {
         int ninputs = (int)inpargs.size(), noutputs = (int)outargs.size();
         CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
         CV_Assert(noutputs == 1);
-        outst.resize(1);
+        outshapes.resize(1);
 
-        const TensorSize& inpsize = inpst[0].size;
+        const TensorSize& inpsize = inpshapes[0];
         const Tensor& axes = net.argTensor(inpargs[1]);
-        outst[0].size = inferShapes_(inpsize, axes);
-        outst[0].type = inferType(inpst[0].type);
-        tempbufs.assign(1, (size_t)0);
+        outshapes[0] = inferShapes_(inpsize, axes);
     }
 
     virtual void forward(Net2& net, Graph& graph,

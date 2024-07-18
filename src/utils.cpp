@@ -3,9 +3,48 @@
 // of this distribution and at http://opencv.org/license.html.
 
 #include "precomp.hpp"
-#include "engine/engine.hpp"
+#include "engine/net2_impl.hpp"
 
 namespace cv { namespace dnn {
+
+std::string typeToString(int type)
+{
+    return
+        type == CV_8U ? "U8" :
+        type == CV_8S ? "I8" :
+        type == CV_16U ? "U16" :
+        type == CV_16S ? "I16" :
+        type == CV_32U ? "U32" :
+        type == CV_32S ? "I32" :
+        type == CV_64U ? "U64" :
+        type == CV_64S ? "I64" :
+        type == CV_16F ? "F16" :
+        type == CV_16BF ? "BF16" :
+        type == CV_32F ? "F32" :
+        type == CV_64F ? "F64" :
+        type == CV_Bool ? "Bool" : format("Unknown_type(%d)", type);
+}
+
+std::string layoutToString(TensorLayout layout)
+{
+    return std::string(layout == LAYOUT_UNKNOWN ? "Unknown" :
+                       layout == LAYOUT_ND ? "ND" :
+                       layout == LAYOUT_NCHW ? "NCHW" :
+                       layout == LAYOUT_NHWC ? "NHWC" :
+                       layout == LAYOUT_NCHWc ? "NCHWc" : "???");
+}
+
+std::string argKindToString(ArgKind kind)
+{
+    return std::string(kind == DNN_ARG_EMPTY ? "Empty" :
+                       kind == DNN_ARG_CONST ? "Const" :
+                       kind == DNN_ARG_INPUT ? "Input" :
+                       kind == DNN_ARG_OUTPUT ? "Output" :
+                       kind == DNN_ARG_TEMP ? "Temp" :
+                       kind == DNN_ARG_PATTERN ? "Pattern" : "???");
+}
+
+bool operator == (const Arg& a, const Arg& b) { return a.idx == b.idx; }
 
 bool isIntType(int type)
 {
@@ -71,12 +110,13 @@ int normalizeAxes(const Tensor& axes, int ndims, int* axisbuf, bool* axismask_)
     return (int)naxes;
 }
 
-TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparams, const TensorSize& wsize)
+TensorSize convInferShape(Net2& net, const TensorSize& inpsize,
+                          const ConvParams& convparams,
+                          const TensorSize& wsize, bool symbolic)
 {
-    CV_Assert(inpsize.layout == LAYOUT_NCHWc);
-
+    int blockLayout = inpsize.layout == LAYOUT_NCHWc;
     int ndims = inpsize.ndims;
-    size_t nspatialdims = (size_t)(ndims - 3);
+    size_t nspatialdims = (size_t)(ndims - 2 - blockLayout);
     TensorSize outsize = inpsize;
     int64_t ksizes[TensorSize::MAX_DIMS];
 
@@ -85,16 +125,19 @@ TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparam
         CV_Assert(ksizes_size == nspatialdims || ksizes_size == nspatialdims+2);
         for (size_t i = 0; i < nspatialdims; i++)
             ksizes[i] = convparams.ksizes[ksizes_size - nspatialdims + i];
-        if (convparams.ngroups == 0 || ksizes_size == nspatialdims) {
-            outsize.size[1] = inpsize.size[1];
-        } else {
-            CV_Assert(convparams.ksizes[0] % inpsize.size[ndims-1] == 0);
-            outsize.size[1] = convparams.ksizes[0]/inpsize.size[ndims-1];
-        }
     } else {
         CV_Assert(!wsize.empty() && wsize.ndims == nspatialdims + 2);
         for (size_t i = 0; i < nspatialdims; i++)
             ksizes[i] = wsize.size[wsize.ndims - nspatialdims + i];
+    }
+
+    if (convparams.ngroups == 0 || wsize.empty()) {
+        outsize.size[1] = inpsize.size[1];
+    } else if (blockLayout) {
+        CV_Assert(wsize.size[0] % inpsize.size[ndims-1] == 0);
+        outsize.size[1] = wsize.size[0]/inpsize.size[ndims-1];
+    } else {
+        outsize.size[1] = wsize.size[0];
     }
 
     CV_Assert(convparams.strides.empty() || convparams.strides.size() == nspatialdims);
@@ -113,7 +156,9 @@ TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparam
         outsize.size[i+2] = (inpsize.size[i+2] + pad_before + pad_after - dilation * (ksize - 1) - 1) / stride + 1;
         CV_Assert(outsize.size[i+2] >= 0);
     }
-    outsize.C = outsize.size[1]*outsize.size[ndims-1];
+
+    if (blockLayout)
+        outsize.C = outsize.size[1]*outsize.size[ndims-1];
 
     return outsize;
 }
@@ -176,12 +221,12 @@ static void calcKernelOffsets2D(int64_t Wi, int64_t Hk, int64_t Wk,
     }
 }
 
-static ConvState initConvState_(const TensorSize& inpsize, const TensorSize& wsize,
+static ConvState initConvState_(Net2& net, const TensorSize& inpsize, const TensorSize& wsize,
                                 const ConvParams& convparams, const Op& activ_,
                                 int* yxtab, int64_t* ofstab)
 {
     ConvState cs;
-    TensorSize outsize = convInferShape(inpsize, convparams);
+    TensorSize outsize = convInferShape(net, inpsize, convparams, wsize, false);
 
     int ndims = inpsize.ndims, wdims = wsize.ndims, kdims = (int)convparams.ksizes.size();
     size_t nspatialdims = ndims - 3;
@@ -283,7 +328,7 @@ static ConvState initConvState_(const TensorSize& inpsize, const TensorSize& wsi
         } else if (activ->opcode == ELWISE_LRELU) {
             cs.fastActivation = ACTIV_LEAKY_RELU;
             cs.activation = nullptr;
-        } else if (activ->opcode == ELWISE_CLIP && cs.activParams[0] == 0.f) {
+        } else if (activ->opcode == ELWISE_CLIPS && cs.activParams[0] == 0.f) {
             cs.fastActivation = ACTIV_CLIP;
             cs.activation = nullptr;
         }
@@ -292,17 +337,17 @@ static ConvState initConvState_(const TensorSize& inpsize, const TensorSize& wsi
     return cs;
 }
 
-ConvState initConvState(const TensorSize& inpsize, const TensorSize& wsize,
+ConvState initConvState(Net2& net, const TensorSize& inpsize, const TensorSize& wsize,
                         const ConvParams& convparams, const Op& activ,
                         int* yxtab, int64_t* ofstab)
 {
-    return initConvState_(inpsize, wsize, convparams, activ, yxtab, ofstab);
+    return initConvState_(net, inpsize, wsize, convparams, activ, yxtab, ofstab);
 }
 
-ConvState initPoolingState(const TensorSize& inpsize, const ConvParams& convparams,
+ConvState initPoolingState(Net2& net, const TensorSize& inpsize, const ConvParams& convparams,
                            int* yxtab, int64_t* ofstab)
 {
-    return initConvState_(inpsize, TensorSize(), convparams, Op(), yxtab, ofstab);
+    return initConvState_(net, inpsize, TensorSize(), convparams, Op(), yxtab, ofstab);
 }
 
 std::ostream& ConvState::dump(std::ostream& strm)

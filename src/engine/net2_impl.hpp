@@ -30,7 +30,7 @@ struct OnnxArgInfo
     std::vector<OnnxTensorDim> size;
 };
 
-typedef std::unordered_map<std::string, int> NamesHash;
+typedef std::unordered_map<std::string, int64_t> NamesHash;
 typedef std::unordered_map<std::string, double> profile;
 
 struct Net2::Impl
@@ -38,22 +38,27 @@ struct Net2::Impl
     Impl(Net2* net_);
     ~Impl();
 
-    void initialize();
     void clear();
-    void initArgs();
-    void forwardGraph(const Graph& graph);
+    void prepareForInference();
+    void forwardGraph(Graph& graph, const std::vector<Tensor>& inputs, std::vector<Tensor>& outputs);
+    void forward(const std::vector<Tensor>& inputs, std::vector<Tensor>& outputs);
+    void updateUseCounts(const Graph& graph, std::vector<int>& usecounts) const;
     void useCounts(std::vector<int>& usecounts) const;
-    void updateUseCounts(std::vector<int>& usecounts, const Graph& graph) const;
 
     void initProfile();
     void updateProfile(const Op& op);
 
     void checkArgs(const std::vector<Arg>& args) const;
     void checkArg(Arg arg) const;
+    void checkAndUpdateDim(const Graph& g, const Node& node, Arg inp, int j, int64_t value);
 
+    void inferTypes();
+    void inferShapes(bool symbolic);
     void assignBuffers();
+    void useBlockLayout();
     void fuse();
     void constFold();
+    void constArgs();
 
     Net2* net;
     ModelFormat modelFormat;
@@ -67,6 +72,7 @@ struct Net2::Impl
     std::vector<Tensor> tensors;
     std::vector<int> bufidxs;
     std::vector<Buffer> buffers;
+    std::vector<Buffer> scratch_bufs;
     std::vector<ArgInfo> pattern_args;
     std::vector<Tensor> pattern_tensors;
     Graph mainGraph;
@@ -79,7 +85,7 @@ struct Net2::Impl
     TensorLayout defaultLayout;
     bool enableFP16;
     bool haveFP16;
-    bool initialized;
+    bool prepared;
     TracingMode tracingMode;
     ProfilingMode profilingMode;
     int accuracy;
@@ -87,6 +93,7 @@ struct Net2::Impl
     Buffer scratchBuf;
     std::vector<int64_t> perfProfileTime;
     std::vector<int> perfProfileCount;
+    std::vector<int64_t> dimvalues;
 
     Device* defaultDevice;
     MemoryManager* defaultMemoryManager;
@@ -104,6 +111,9 @@ bool isIntType(int type);
 bool isSignedIntType(int type);
 bool isFPType(int type);
 
+std::string typeToString(int type);
+std::string argKindToString(ArgKind kind);
+
 // normalize axis. The input axis should be within [-ndims, ndims-1] range
 int normalizeAxis(int axis, int ndims);
 
@@ -113,7 +123,10 @@ int normalizeAxes(const Tensor& axes, int ndims, int* axisbuf, bool* axismask=nu
 
 // computes shape of the output tensor of convolution
 // (including depth-wise convolution), max pooling or average pooling operations
-TensorSize convInferShape(const TensorSize& inpsize, const ConvParams& convparams, const TensorSize& wsize=TensorSize());
+TensorSize convInferShape(Net2& net, const TensorSize& inpsize,
+                          const ConvParams& convparams,
+                          const TensorSize& wsize=TensorSize(),
+                          bool symbolic=false);
 
 enum FastActivation {
     ACTIV_NONE=0,
@@ -142,10 +155,10 @@ struct ConvState
 
 // initializes the structure of parameters for 1D/2D/3D
 // depth-wise convolution, max pooling or average pooling
-ConvState initPoolingState(const TensorSize& inpsize,
+ConvState initPoolingState(Net2& net, const TensorSize& inpsize,
                            const ConvParams& convparams,
                            int* yxtab, int64_t* ofstab);
-ConvState initConvState(const TensorSize& inpsize,
+ConvState initConvState(Net2& net, const TensorSize& inpsize,
                         const TensorSize& wsize,
                         const ConvParams& convparams,
                         const Op& activOp,
@@ -153,8 +166,8 @@ ConvState initConvState(const TensorSize& inpsize,
 
 void prindent(std::ostream& strm, int indent);
 
-typedef void (*depthwise_conv2d_t)(const void* inp__, void* out__,
-                                   const ConvState& cs,
+typedef void (*depthwise_conv2d_t)(const void* inp__, const void* residual__,
+                                   void* out__, const ConvState& cs,
                                    const void* weights__,
                                    const float* scale__,
                                    const float* bias__);

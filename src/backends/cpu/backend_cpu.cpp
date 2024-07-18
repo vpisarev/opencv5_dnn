@@ -3,7 +3,7 @@
 // of this distribution and at http://opencv.org/license.html.
 
 #include "../../precomp.hpp"
-#include "../../engine/engine.hpp"
+#include "../../engine/net2_impl.hpp"
 #include "backend_cpu.hpp"
 
 namespace cv { namespace dnn {
@@ -51,7 +51,7 @@ bool CPUBackend::supportType(int type) const
 int64_t CPUBackend::preferredBlockSize(int) const
 {
     // [TODO]
-    return 1;
+    return 8;
 }
 
 bool CPUBackend::supportOp(const Op&, const std::vector<SizeType>&) const

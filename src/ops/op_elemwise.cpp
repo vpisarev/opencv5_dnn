@@ -3,7 +3,7 @@
 // of this distribution and at http://opencv.org/license.html.
 
 #include "../precomp.hpp"
-#include "../engine/engine.hpp"
+#include "../engine/net2_impl.hpp"
 #include <math.h>
 
 namespace cv { namespace dnn {
@@ -198,8 +198,8 @@ CV_IMPLEMENT_UNARY_OP(neg, 64s, int64_t, int64_t, int64_t, CV_NEG)
 CV_IMPLEMENT_UNARY_OP(neg, 32f, float, float, float, CV_NEG)
 CV_IMPLEMENT_UNARY_OP(neg, 16f, hfloat, hfloat, float, CV_NEG)
 
-static void activ_clip_32f(const void* inptr_, void* outptr_,
-                           size_t len, const float* params)
+static void activ_clips_32f(const void* inptr_, void* outptr_,
+                             size_t len, const float* params)
 {
     float minv = params[0], maxv = params[1];
     const float* inptr = (const float*)inptr_;
@@ -210,16 +210,37 @@ static void activ_clip_32f(const void* inptr_, void* outptr_,
     }
 }
 
-static void elemwise_clip_32f(size_t ninputs, const void** inptr_, const size_t* steps,
-                              void* outptr_, size_t len, const float*)
+static void activ_clips_16f(const void* inptr_, void* outptr_,
+                             size_t len, const float* params)
 {
-    float minv = -FLT_MAX, maxv = FLT_MAX;
-    CV_Assert(steps[0] == 1);
-    if (ninputs > 1)
-        minv = *((const float*)inptr_[1]);
-    if (ninputs > 2)
-        maxv = *((const float*)inptr_[2]);
+    float minv = params[0], maxv = params[1];
+    const hfloat* inptr = (const hfloat*)inptr_;
+    hfloat* outptr = (hfloat*)outptr_;
+    for (size_t j = 0; j < len; j++) {
+        float x = (float)inptr[j];
+        outptr[j] = hfloat(std::min(std::max(x, minv), maxv));
+    }
+}
+
+static void elemwise_clips_32f(size_t, const void** inptr_, const size_t*,
+                                void* outptr_, size_t len, const float* params)
+{
+    activ_clips_32f(inptr_[0], outptr_, len, params);
+}
+
+static void elemwise_clips_16f(size_t, const void** inptr_, const size_t*,
+                                void* outptr_, size_t len, const float* params)
+{
+    activ_clips_16f(inptr_[0], outptr_, len, params);
+}
+
+static void elemwise_clip_32f(size_t ninputs, const void** inptr_, const size_t* steps,
+                              void* outptr_, size_t len, const float* params)
+{
     const float* inptr = (const float*)inptr_[0];
+    const float* minptr = (const float*)inptr_[1];
+    const float* maxptr = (const float*)inptr_[2];
+    float minv = minptr[0], maxv = maxptr[0];
     float* outptr = (float*)outptr_;
     for (size_t j = 0; j < len; j++) {
         float x = inptr[j];
@@ -228,15 +249,12 @@ static void elemwise_clip_32f(size_t ninputs, const void** inptr_, const size_t*
 }
 
 static void elemwise_clip_16f(size_t ninputs, const void** inptr_, const size_t* steps,
-                              void* outptr_, size_t len, const float*)
+                              void* outptr_, size_t len, const float* params)
 {
-    float minv = -65504.f, maxv = 65504.f;
-    CV_Assert(steps[0] == 1);
-    if (ninputs > 1)
-        minv = *((const float*)inptr_[1]);
-    if (ninputs > 2)
-        maxv = *((const float*)inptr_[2]);
     const hfloat* inptr = (const hfloat*)inptr_[0];
+    const hfloat* minptr = (const hfloat*)inptr_[1];
+    const hfloat* maxptr = (const hfloat*)inptr_[2];
+    float minv = (float)minptr[0], maxv = (float)maxptr[0];
     hfloat* outptr = (hfloat*)outptr_;
     for (size_t j = 0; j < len; j++) {
         float x = (float)inptr[j];
@@ -453,6 +471,7 @@ std::string_view elemwiseOpcode2str(ElemwiseOpcode opcode_)
         names[ELWISE_ATANH] = "Atanh";
         names[ELWISE_CEIL] = "Ceil";
         names[ELWISE_CLIP] = "Clip";
+        names[ELWISE_CLIPS] = "ClipS";
         names[ELWISE_COS] = "Cos";
         names[ELWISE_COSH] = "Cosh";
         names[ELWISE_ERF] = "Erf";
@@ -492,7 +511,7 @@ ElemwiseOp::activ_t ElemwiseOp::getActivation(ElemwiseOpcode opcode, int type)
     return opcode == ELWISE_RELU ? activ_relu_32f :
            opcode == ELWISE_LRELU ? activ_leaky_relu_32f :
            // clip requires 3 inputs; need to add CLIPS with 1 input and 2 params (minv, maxv)
-           /*opcode == ELWISE_CLIP ? activ_clip_32f : */
+           opcode == ELWISE_CLIPS ? activ_clips_32f :
            opcode == ELWISE_SIGMOID ? activ_sigmoid_32f : nullptr;
 }
 
@@ -553,6 +572,7 @@ ElemwiseOp::forward_t ElemwiseOp::getForwardSlice(ElemwiseOpcode opcode, int typ
     CV_INIT_MATH_FUNC_TAB(atan);
     CV_INIT_MATH_FUNC_TAB(atanh);
     CV_INIT_MATH_FUNC_TAB(ceil);
+    CV_INIT_MATH_FUNC_TAB(clips);
     CV_INIT_MATH_FUNC_TAB(cos);
     CV_INIT_MATH_FUNC_TAB(cosh);
     CV_INIT_MATH_FUNC_TAB(erf);
@@ -604,6 +624,7 @@ ElemwiseOp::forward_t ElemwiseOp::getForwardSlice(ElemwiseOpcode opcode, int typ
         func_tabs[ELWISE_ATANH] = atanh_tab;
         func_tabs[ELWISE_CEIL] = ceil_tab;
         func_tabs[ELWISE_CLIP] = clip_tab;
+        func_tabs[ELWISE_CLIPS] = clips_tab;
         func_tabs[ELWISE_COS] = cos_tab;
         func_tabs[ELWISE_COSH] = cosh_tab;
         func_tabs[ELWISE_ERF] = erf_tab;
@@ -658,13 +679,14 @@ public:
         }
         for (; i < MAX_PARAMS; i++)
             params[i] = 0.f;
+        nparams = nparams_;
 
         haveFP16 = checkHardwareSupport(CV_CPU_FP16);
     }
     virtual std::string_view name() const CV_OVERRIDE { return elemwiseOpcode2str(opcode); }
     virtual Op clone() const CV_OVERRIDE
     {
-        return std::make_shared<ElemwiseOpImpl>(opcode, params, MAX_PARAMS);
+        return std::make_shared<ElemwiseOpImpl>(opcode, params, nparams);
     }
 
     virtual int minNumInputs() const CV_OVERRIDE
@@ -701,6 +723,18 @@ public:
     }
     virtual int minNumOutputs() const CV_OVERRIDE { return 1; }
     virtual int maxNumOutputs() const CV_OVERRIDE { return 1; }
+
+    virtual std::ostream& dumpAttrs(std::ostream& strm, int indent) const CV_OVERRIDE
+    {
+        if (nparams > 0) {
+            prindent(strm, indent);
+            strm << "params: [";
+            for (size_t i = 0; i < nparams; i++)
+                strm << (i > 0 ? ", " : "") << params[i];
+            strm << "],\n";
+        }
+        return strm;
+    }
 
     int inferType(int inptype0) const
     {
@@ -755,13 +789,32 @@ public:
         return false;
     }
 
+    virtual void setParams(const std::vector<Tensor>& ts) CV_OVERRIDE
+    {
+        if (opcode == ELWISE_CLIP) {
+            CV_Assert(ts.size() == 2);
+            params[0] = ts[0].getScalar<float>();
+            params[1] = ts[1].getScalar<float>();
+            nparams = 2;
+            opcode = ELWISE_CLIPS;
+        } else {
+            CV_Error(Error::StsError, "setParams() is only supported by CLIP operation");
+        }
+    }
+
     virtual bool alwaysSupportInplace() const CV_OVERRIDE
     {
         return opcode == ELWISE_CLIP || (maxNumInputs() == 1 && inferType(CV_32F) == CV_32F);
     }
 
+    virtual int supportBlockLayout(int, int) const CV_OVERRIDE
+    {
+        // TODO: 'T op const_scalar' or 'const_scalar op T' should also be marked as 'A'-operations
+        return opcode == ELWISE_CLIP || (maxNumInputs() == 1 && inferType(CV_32F) == CV_32F) ? 0 : -1;
+    }
+
     virtual int64_t getFLOPS(const std::vector<SizeType> &inputs,
-                           const std::vector<SizeType> &outputs) const CV_OVERRIDE
+                             const std::vector<SizeType> &outputs) const CV_OVERRIDE
     {
         CV_Assert(outputs.size() == 1);
         // probably, there should be a coefficient in the case of complex math functions,
@@ -769,28 +822,42 @@ public:
         return (int64_t)outputs[0].size.total();
     }
 
-    virtual void inferShapes(const Net2& net, const Graph& graph,
+    virtual void inferTypes(const Net2& net, const Graph& graph,
                             const std::vector<Arg>& inpargs,
-                            const std::vector<SizeType>& inpst,
+                            const std::vector<int>& inptypes,
                             const std::vector<Arg>& outargs,
-                            std::vector<SizeType>& outst,
-                            std::vector<size_t>& tempbufs) const CV_OVERRIDE
+                            std::vector<int>& outtypes) const CV_OVERRIDE
+    {
+        int ninputs = (int)inpargs.size(), noutputs = (int)outargs.size();
+        CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
+        CV_Assert((int)inptypes.size() == ninputs);
+        CV_Assert(noutputs == 1);
+
+        outtypes.resize(1);
+        outtypes[0] = inferType(inptypes[0]);
+        for (int i = 1; i < ninputs; i++) {
+            // all element-wise operations we support so far
+            // require all input parameters to have the same type
+            CV_Assert(inptypes[i] == inptypes[0]);
+        }
+    }
+
+    virtual void inferShapes(Net2& net, const Graph& graph,
+                             const std::vector<Arg>& inpargs,
+                             const std::vector<TensorSize>& inpshapes,
+                             const std::vector<Arg>& outargs,
+                             std::vector<TensorSize>& outshapes,
+                             bool symbolic) const CV_OVERRIDE
     {
         int ninputs = (int)inpargs.size(), noutputs = (int)outargs.size();
         CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
         CV_Assert(noutputs == 1);
 
-        outst.resize(1);
-        outst[0].size = inpst[0].size;
-        outst[0].type = inferType(inpst[0].type);
+        outshapes.resize(1);
+        outshapes[0] = inpshapes[0];
         for (int i = 1; i < ninputs; i++) {
-            // all element-wise operations we support so far
-            // require all input parameters to have the same type
-            CV_Assert(inpst[i].type == inpst[0].type);
-            outst[0].size = outst[0].size.expand(inpst[i].size);
+            outshapes[0] = outshapes[0].expand(inpshapes[i]);
         }
-
-        tempbufs.assign(1, (size_t)0);
     }
 
     virtual void forward(Net2& net, Graph& graph,
@@ -800,6 +867,15 @@ public:
     {
         size_t ninputs = inputs.size();
         CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
+
+        if (opcode == ELWISE_CLIP) {
+            CV_Assert(ninputs == 1 || ninputs == 3);
+            if (ninputs == 3) {
+                params[0] = inputs[1].getScalar<float>();
+                params[1] = inputs[2].getScalar<float>();
+                ninputs = 1;
+            }
+        }
 
         AutoBuffer<int64_t> sizesbuf((ninputs+1)*2*(sizeof(TensorSize)/sizeof(int64_t)) + (ninputs + 1)*(2 + TensorSize::MAX_DIMS));
         TensorSize* sizes0 = (TensorSize*)sizesbuf.data(), *sizes = sizes0 + ninputs + 1;
@@ -961,6 +1037,31 @@ Arg elemwise(Graph& graph, std::string_view opname, std::string_view outname,
 {
     Op op = ElemwiseOp::create(opcode, params, nparams);
     return graph->append(opname, op, outname, inputs);
+}
+
+Arg clip(Graph& graph, std::string_view opname,
+         std::string_view outname, Arg input, Arg minval, Arg maxval)
+{
+    Net2* net = graph->net();
+
+    if (net->isConstArg(minval) && net->isConstArg(maxval)) {
+        Tensor min_t = net->argTensor(minval);
+        Tensor max_t = net->argTensor(maxval);
+        return clip(graph, opname, outname, input,
+                    min_t.getScalar<float>(),
+                    max_t.getScalar<float>());
+    } else {
+        Op op = ElemwiseOp::create(ELWISE_CLIP, nullptr, 0);
+        return graph->append(opname, op, outname, {input, minval, maxval});
+    }
+}
+
+Arg clip(Graph& graph, std::string_view opname,
+         std::string_view outname, Arg input, float minval, float maxval)
+{
+    float params[] = { minval, maxval };
+    Op op = ElemwiseOp::create(ELWISE_CLIPS, params, 2);
+    return graph->append(opname, op, outname, {input});
 }
 
 }}

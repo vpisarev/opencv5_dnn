@@ -3,7 +3,7 @@
 // of this distribution and at http://opencv.org/license.html.
 
 #include "../precomp.hpp"
-#include "../engine/engine.hpp"
+#include "../engine/net2_impl.hpp"
 
 namespace cv { namespace dnn {
 
@@ -35,7 +35,7 @@ NodeData::~NodeData()
 
 Node NodeData::clone(Net2* newnet) const
 {
-    Node node = std::make_shared<NodeData>(name_, op_, inputs_, outputs_);
+    Node node = create(name_, op_, inputs_, outputs_);
     for (auto g: subgraphs_) {
         node->subgraphs_.push_back(g->clone(newnet));
     }
@@ -52,21 +52,21 @@ std::ostream& NodeData::dump(const Net2& net, std::ostream& strm,
     int argindent = subindent + delta_indent;
     prindent(strm, indent);
     std::string_view opname = op_->name();
-    strm << opname << "{\n";
+    strm << opname << " {\n";
     prindent(strm, subindent);
     strm << "name: \"" << name_ << "\",\n";
     op_->dumpAttrs(strm, subindent);
     prindent(strm, subindent);
     strm << "inputs: [\n";
     for (size_t i = 0; i < ninputs; i++) {
-        net.dumpArg(strm, inputs_[i], argindent, i+1 < ninputs);
+        net.dumpArg(strm, inputs_[i], argindent, i+1 < ninputs, true);
     }
     prindent(strm, subindent);
     strm << "],\n";
     prindent(strm, subindent);
     strm << "outputs: [\n";
-    for (size_t i = 0; i < ninputs; i++) {
-        net.dumpArg(strm, outputs_[i], argindent, i+1 < noutputs);
+    for (size_t i = 0; i < noutputs; i++) {
+        net.dumpArg(strm, outputs_[i], argindent, i+1 < noutputs, true);
     }
     prindent(strm, subindent);
     strm << "],\n";
@@ -99,10 +99,35 @@ std::ostream& NodeData::dump(const Net2& net, std::ostream& strm,
 
 
 std::string_view NodeData::name() const { return name_; }
-Op NodeData::op() const { return op_; }
+Op& NodeData::op() const { return const_cast<Op&>(op_); }
 const std::vector<Arg>& NodeData::inputs() const { return inputs_; }
 const std::vector<Arg>& NodeData::outputs() const { return outputs_; }
 const std::vector<Graph>& NodeData::subgraphs() const { return subgraphs_; }
+size_t NodeData::ninputs() const { return inputs_.size(); }
+size_t NodeData::noutputs() const { return outputs_.size(); }
+size_t NodeData::nsubgraphs() const { return subgraphs_.size(); }
+Arg NodeData::inputs(size_t idx) const
+{
+    CV_Assert(idx < inputs_.size());
+    return inputs_[idx];
+}
+Arg NodeData::outputs(size_t idx) const
+{
+    CV_Assert(idx < outputs_.size());
+    return outputs_[idx];
+}
+Graph NodeData::subgraphs(size_t idx) const
+{
+    CV_Assert(idx < subgraphs_.size());
+    return subgraphs_[idx];
+}
+Node NodeData::create(const std::string_view name, const Op& op,
+                      const std::vector<Arg>& inputs,
+                      const std::vector<Arg>& outputs,
+                      const std::vector<Graph>& subgraphs)
+{
+    return std::make_shared<NodeData>(name, op, inputs, outputs, subgraphs);
+}
 
 GraphData::GraphData(const Net2& net, std::string_view name,
                      const std::vector<Arg>& inputs,
@@ -154,7 +179,7 @@ void GraphData::append(std::string_view node_name, const Op& op,
         outputs[i] = outarg;
     }
 
-    Node n = std::make_shared<NodeData>(node_name, op, inputs, outputs);
+    Node n = NodeData::create(node_name, op, inputs, outputs);
     prog_.push_back(n);
 }
 
@@ -187,14 +212,14 @@ std::ostream& GraphData::dump(std::ostream& strm, int indent, bool comma)
     prindent(strm, subindent);
     strm << "inputs: [\n";
     for (size_t i = 0; i < ninputs; i++) {
-        net_->dumpArg(strm, inputs_[i], argindent, i+1 < ninputs);
+        net_->dumpArg(strm, inputs_[i], argindent, i+1 < ninputs, true);
     }
     prindent(strm, subindent);
     strm << "],\n";
     prindent(strm, subindent);
     strm << "outputs: [\n";
-    for (size_t i = 0; i < ninputs; i++) {
-        net_->dumpArg(strm, outputs_[i], argindent, i+1 < noutputs);
+    for (size_t i = 0; i < noutputs; i++) {
+        net_->dumpArg(strm, outputs_[i], argindent, i+1 < noutputs, true);
     }
     prindent(strm, subindent);
     strm << "],\n";
@@ -225,11 +250,13 @@ void GraphData::inferShapes(const std::vector<SizeType>& inpst,
 Net2* GraphData::net() const { return net_; }
 const std::vector<Arg>& GraphData::inputs() const { return inputs_; }
 const std::vector<Arg>& GraphData::outputs() const { return outputs_; }
+
 void GraphData::setOutputs(const std::vector<Arg>& outputs) {
     net_->checkArgs(outputs);
     outputs_ = outputs;
 }
 const std::vector<Node>& GraphData::prog() const { return prog_; }
+void GraphData::setProg(const std::vector<Node>& newprog) { prog_ = newprog; }
 
 OptimizedGraph GraphData::getOptimized() const { return optigraph_; }
 

@@ -3,7 +3,7 @@
 // of this distribution and at http://opencv.org/license.html.
 
 #include "../precomp.hpp"
-#include "../engine/engine.hpp"
+#include "../engine/net2_impl.hpp"
 #include <math.h>
 
 namespace cv { namespace dnn {
@@ -83,6 +83,13 @@ public:
     virtual int minNumOutputs() const CV_OVERRIDE { return 1; }
     virtual int maxNumOutputs() const CV_OVERRIDE { return 1; }
 
+    virtual std::ostream& dumpAttrs(std::ostream& strm, int indent) const CV_OVERRIDE
+    {
+        prindent(strm, indent);
+        strm << "epsilon: " << epsilon << ",\n";
+        return strm;
+    }
+
     int inferType(int inptype0) const
     {
         return inptype0;
@@ -98,6 +105,12 @@ public:
         return true;
     }
 
+    virtual int supportBlockLayout(int input, int) const CV_OVERRIDE
+    {
+        // [TODO] this is a little hack, but since all parameters except for 0th one must be scalars, we always report 0
+        return input == 0 ? 1 : -1;
+    }
+
     virtual int64_t getFLOPS(const std::vector<SizeType> &inputs,
                              const std::vector<SizeType> &outputs) const CV_OVERRIDE
     {
@@ -105,33 +118,45 @@ public:
         return (int64_t)inputs[0].size.total();
     }
 
+    virtual void inferTypes(const Net2& net, const Graph& graph,
+                            const std::vector<Arg>& inpargs,
+                            const std::vector<int>& inptypes,
+                            const std::vector<Arg>& outargs,
+                            std::vector<int>& outtypes) const CV_OVERRIDE
+    {
+        int ninputs = (int)inpargs.size(), noutputs = (int)outargs.size();
+        CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
+        CV_Assert((int)inptypes.size() == ninputs);
+        CV_Assert(noutputs == 1);
+
+        outtypes.resize(1);
+        outtypes[0] = inferType(inptypes[0]);
+    }
+
     TensorSize inferShapes_(const TensorSize& inpsize) const
     {
         int ndims = inpsize.ndims;
 
-        CV_Assert(inpsize.layout != LAYOUT_NCHWc);
+        //CV_Assert(inpsize.layout != LAYOUT_NCHWc);
         CV_Assert(ndims >= 4);
 
-        TensorSize outsize = inpsize;
-        return outsize;
+        return inpsize;
     }
 
-    virtual void inferShapes(const Net2& net, const Graph& graph,
-                            const std::vector<Arg>& inpargs,
-                            const std::vector<SizeType>& inpst,
-                            const std::vector<Arg>& outargs,
-                            std::vector<SizeType>& outst,
-                            std::vector<size_t>& tempbufs) const CV_OVERRIDE
+    virtual void inferShapes(Net2& net, const Graph& graph,
+                             const std::vector<Arg>& inpargs,
+                             const std::vector<TensorSize>& inpshapes,
+                             const std::vector<Arg>& outargs,
+                             std::vector<TensorSize>& outshapes,
+                             bool symbolic) const CV_OVERRIDE
     {
         int ninputs = (int)inpargs.size(), noutputs = (int)outargs.size();
         CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
         CV_Assert(noutputs == 1);
-        outst.resize(1);
+        outshapes.resize(1);
 
-        const TensorSize& inpsize = inpst[0].size;
-        outst[0].size = inferShapes_(inpsize);
-        outst[0].type = inferType(inpst[0].type);
-        tempbufs.assign(1, (size_t)0);
+        const TensorSize& inpsize = inpshapes[0];
+        outshapes[0] = inferShapes_(inpsize);
     }
 
     virtual void computeScaleBias(const Tensor& scale_, const Tensor& bias_,

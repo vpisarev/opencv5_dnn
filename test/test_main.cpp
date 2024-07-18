@@ -7,7 +7,7 @@
 int main(int, char**)
 {
     //cv::dnn::test_0d();
-    cv::dnn::test_conv();
+    //cv::dnn::test_conv();
     //cv::dnn::test_elemwise();
     //cv::dnn::test_flatten();
     //cv::dnn::test_globavgpool();
@@ -18,4 +18,6 @@ int main(int, char**)
     //cv::dnn::test_transform_layout();
     //cv::dnn::test_squeeze();
     //cv::dnn::test_unsqueeze();
+    //cv::dnn::test_import_onnx();
+    cv::dnn::test_imgclassify();
 }

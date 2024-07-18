@@ -3,14 +3,14 @@
 // of this distribution and at http://opencv.org/license.html.
 
 #include "../precomp.hpp"
-#include "../engine/engine.hpp"
+#include "../engine/net2_impl.hpp"
 
 namespace cv { namespace dnn {
 
 ArgInfo::ArgInfo()
 {
     kind = DNN_ARG_EMPTY;
-    type = 0;
+    type = -1;
 }
 
 Net2::Net2()
@@ -22,6 +22,8 @@ Net2::~Net2()
 {
     p = std::shared_ptr<Impl>();
 }
+
+Net2::Impl* Net2::impl() const { return p.get(); }
 
 void Net2::release()
 {
@@ -36,7 +38,27 @@ void Net2::release()
 void Net2::forward(InputArrayOfArrays inputBlobs,
                    OutputArrayOfArrays outputBlobs)
 {
-    CV_Error(Error::StsNotImplemented, "");
+    int i, ninputs = (int)inputBlobs.total();
+    std::vector<Mat> inp_ms(ninputs), out_m;
+    std::vector<Tensor> inputs(ninputs), outputs;
+    for (i = 0; i < ninputs; i++) {
+        inp_ms[i] = inputBlobs.getMat(i);
+        int ndims = inp_ms[i].dims;
+        TensorLayout layout = ndims >= 3 ? p->defaultLayout : ndims == 2 ? LAYOUT_ND : LAYOUT_UNKNOWN;
+        inputs[i] = Tensor(inp_ms[i], layout, false, nullptr); // inp_ms exist until forward() is finished,
+                                                 // so we have input tensors protected from premature release.
+                                                 // Therefore, we don't need to create extra copy of those tensors,
+                                                 // we just create temporary Tensor headers on top of this data.
+    }
+    p->forward(inputs, outputs);
+    int noutputs = (int)outputs.size();
+    // [TODO] eliminate output data copy: many of computer vision models produce much smaller input than output,
+    // but some, like superresolution, may have output bigger than input, so it would be useful to eliminate it.
+    std::vector<Mat>& out_ms = outputBlobs.getMatVecRef();
+    out_ms.resize(noutputs);
+    for (i = 0; i < noutputs; i++) {
+        outputs[i].getMat().copyTo(out_ms[i]);
+    }
 }
 
 void Net2::getInputNames(std::vector<std::string>& inputs) const
@@ -198,7 +220,7 @@ Arg Net2::getArg(std::string_view name)
         std::string name_(name);
         auto it = p->argnames.find(name_);
         if (it != p->argnames.end()) {
-            return Arg(it->second);
+            return Arg((int)it->second);
         }
     }
     return newArg(name, DNN_ARG_TEMP);
@@ -214,7 +236,9 @@ Arg Net2::newConstArg(std::string_view name, const Tensor& t) const
 {
     Arg arg = newArg(name, DNN_ARG_CONST);
     p->tensors[arg.idx] = t;
-
+    ArgInfo& info = p->args[arg.idx];
+    info.type = t.type();
+    info.size = t.size();
     return arg;
 }
 
@@ -225,12 +249,12 @@ Arg Net2::newArg(std::string_view name, ArgKind kind) const
     if (!name.empty()) {
         std::string name_(name);
         CV_Assert(p->argnames.find(name_) == p->argnames.end());
-        p->argnames.insert(std::make_pair(name_, idx));
+        p->argnames.insert(std::make_pair(name_, (int64_t)idx));
     }
 
     ArgInfo info;
     info.name = name;
-    info.kind = DNN_ARG_TEMP;
+    info.kind = kind;
     p->args.push_back(info);
     p->tensors.push_back(Tensor());
     p->bufidxs.push_back(-1);
@@ -273,6 +297,45 @@ SizeType Net2::argSizeType(Arg arg) const
 {
     ArgInfo info = argInfo(arg);
     return SizeType({info.size, info.type});
+}
+
+int64_t Net2::findDim(std::string_view name, bool insert)
+{
+    std::string name_(name);
+
+    if (!name.empty()) {
+        auto it = p->dimnames.find(name_);
+        if (it != p->dimnames.end())
+            return it->second;
+    }
+    if (!insert) {
+        CV_Error(Error::StsObjectNotFound, "");
+    }
+
+    int64_t dim = -(int64_t)p->dimnames_.size()-1;
+    int attempt = 0, max_attempt = 100000;
+    for (;attempt < max_attempt; attempt++) {
+        if (name.empty())
+            name_ = attempt == 0 ? format("N%d", (int)dim) : format("N%d.%d", (int)dim, attempt);
+        auto it = p->dimnames.find(name_);
+        if (it != p->dimnames.end()) {
+            p->dimnames.insert(std::make_pair(name_, dim));
+            p->dimnames_.push_back(name_);
+            break;
+        }
+    }
+    CV_Assert(attempt < max_attempt);
+    return dim;
+}
+
+
+std::string Net2::dimToString(int64_t dim) const
+{
+    if (dim >= 0)
+        return format("%lld", (long long)dim);
+    int64_t idx = -dim-1;
+    CV_Assert(idx < (int64_t)p->dimnames_.size());
+    return p->dimnames_[idx];
 }
 
 bool Net2::useBackend(std::string_view backendSpec)
@@ -355,8 +418,42 @@ std::ostream& Net2::dump(std::ostream* strm0) const
     return strm;
 }
 
-std::ostream& Net2::dumpArg(std::ostream& strm, Arg arg, int indent, bool comma) const
+std::ostream& Net2::dumpArg(std::ostream& strm, Arg arg, int indent, bool comma, bool dump_details) const
 {
+    const ArgInfo& info = argInfo(arg);
+    prindent(strm, indent);
+    if (arg.empty()) {
+        strm << "<empty>" << (comma ? "," : "");
+    } else {
+        strm << '\"' << info.name << (comma ? "\"," : "\"");
+        if (dump_details && arg.idx > 0) {
+            strm << " // ";
+            strm << (info.kind == DNN_ARG_INPUT ? "<Input>" :
+                     info.kind == DNN_ARG_OUTPUT ? "<Output>" :
+                     info.kind == DNN_ARG_CONST ? "<Const>" :
+                     info.kind == DNN_ARG_TEMP ? "<Temp>" :
+                     "<Uknown kind ???>");
+            if (info.type >= 0) {
+                strm << " " << typeToString(info.type);
+                if (info.size.empty()) {
+                    strm << " <empty>";
+                } else {
+                    if (info.size.ndims > 0 && info.size.layout != LAYOUT_UNKNOWN) {
+                        strm << " " << layoutToString(info.size.layout);
+                    }
+                    strm << " [";
+                    for (int i = 0; i < info.size.ndims; i++) {
+                        strm << (i > 0 ? " x " : "");
+                        strm << dimToString(info.size.size[i]);
+                    }
+                    strm << "]";
+                }
+            }
+            if (info.kind == DNN_ARG_TEMP)
+                strm << " (buf #" << p->bufidxs[arg.idx] << ")";
+        }
+    }
+    strm << "\n";
     return strm;
 }
 
@@ -370,9 +467,9 @@ void Net2::setOnnxInfo(const OnnxInfo& info) {
     p->onnxInfo = info;
 }
 
-void Net2::initialize()
+void Net2::prepare()
 {
-    p->initialize();
+    p->prepareForInference();
 }
 
 }}

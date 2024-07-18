@@ -3,7 +3,7 @@
 // of this distribution and at http://opencv.org/license.html.
 
 #include "../precomp.hpp"
-#include "../engine/engine.hpp"
+#include "../engine/net2_impl.hpp"
 #include "opencv2/core/hal/intrin.hpp"
 
 namespace cv { namespace dnn {
@@ -300,9 +300,9 @@ typedef void (*maxpool_func_t)(const void* inp, void* out, const ConvState& cs);
 class MaxPoolOpImpl : public MaxPoolOp
 {
 public:
-    MaxPoolOpImpl(const ConvParams& convparams_, bool computeIndices_, bool rowMajorOrder_)
+    MaxPoolOpImpl(const ConvParams& params_, bool computeIndices_, bool rowMajorOrder_)
     {
-        params = convparams_;
+        params = params_;
         computeIndices = computeIndices_;
         rowMajorOrder = rowMajorOrder_;
 
@@ -335,6 +335,11 @@ public:
         return false;
     }
 
+    virtual int supportBlockLayout(int, int) const CV_OVERRIDE
+    {
+        return 1;
+    }
+
     virtual int64_t getFLOPS(const std::vector<SizeType> &inputs,
                              const std::vector<SizeType> &outputs) const CV_OVERRIDE
     {
@@ -346,24 +351,35 @@ public:
         return (int64_t)(inputs[0].size.total()*ksize);
     }
 
-    virtual void inferShapes(const Net2& net, const Graph& graph,
+    virtual void inferTypes(const Net2& net, const Graph& graph,
                             const std::vector<Arg>& inpargs,
-                            const std::vector<SizeType>& inpst,
+                            const std::vector<int>& inptypes,
                             const std::vector<Arg>& outargs,
-                            std::vector<SizeType>& outst,
-                            std::vector<size_t>& tempbufs) const CV_OVERRIDE
+                            std::vector<int>& outtypes) const CV_OVERRIDE
+    {
+        int ninputs = (int)inpargs.size(), noutputs = (int)outargs.size();
+        CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
+        CV_Assert((int)inptypes.size() == ninputs);
+        CV_Assert(noutputs == 1);
+
+        outtypes.resize(1);
+        outtypes[0] = inferType(inptypes[0]);
+    }
+
+    virtual void inferShapes(Net2& net, const Graph& graph,
+                             const std::vector<Arg>& inpargs,
+                             const std::vector<TensorSize>& inpshapes,
+                             const std::vector<Arg>& outargs,
+                             std::vector<TensorSize>& outshapes,
+                             bool symbolic) const CV_OVERRIDE
     {
         int ninputs = (int)inpargs.size(), noutputs = (int)outargs.size();
         CV_Assert(minNumInputs() <= ninputs && ninputs <= maxNumInputs());
         CV_Assert(noutputs == 1);
-        outst.resize(1);
+        outshapes.resize(1);
 
-        const TensorSize& inpsize = inpst[0].size;
-        TensorSize& outsize = outst[0].size;
-
-        outsize = convInferShape(inpsize, params);
-        outst[0].type = inferType(inpst[0].type);
-        tempbufs.assign(1, (size_t)0);
+        const TensorSize& inpsize = inpshapes[0];
+        outshapes[0] = convInferShape(net, inpsize, params, TensorSize(), symbolic);
     }
 
     virtual void forward(Net2& net, Graph& graph,
@@ -378,7 +394,7 @@ public:
 
         int inptype = inp.type(), outtype = inferType(inptype);
         TensorSize inpsize = inp.size();
-        TensorSize outsize = convInferShape(inpsize, params);
+        TensorSize outsize = convInferShape(net, inpsize, params);
         outputs.resize(1);
         Tensor& out = outputs[0];
         out.fitSameDevice(inp, outsize, outtype);
@@ -403,7 +419,7 @@ public:
         int64_t* ofstab = buf.data();
         int* yxtab = (int*)(ofstab + ksize);
 
-        ConvState cs = initPoolingState(inpsize, params, yxtab, ofstab);
+        ConvState cs = initPoolingState(net, inpsize, params, yxtab, ofstab);
 
         func(inptr0, outptr0, cs);
     }

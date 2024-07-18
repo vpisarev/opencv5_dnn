@@ -3,7 +3,7 @@
 // of this distribution and at http://opencv.org/license.html.
 
 #include "../precomp.hpp"
-#include "../engine/engine.hpp"
+#include "../engine/net2_impl.hpp"
 #include "opencv2/core/hal/intrin.hpp"
 #include <math.h>
 
@@ -53,7 +53,7 @@ void repackDepthwiseConvWeights(const void* inpw__, int inptype_, void* outw__, 
     });
 }
 
-static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState& cs,
+static void conv2d_depthwise_32f(const void* inp__, const void* residual__, void* out__, const ConvState& cs,
                                  const void* weights__, const float* scale__, const float* bias__)
 {
     int nlanes_ = VTraits<v_float32>::vlanes();
@@ -103,6 +103,7 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
 
         const float* inp = (const float*)inp__ + nc0*iplanesize;
         float* out = (float*)out__ + nc0*planesize;
+        const float* residual = residual__ ? (const float*)residual__ + nc0*planesize : nullptr;
         v_float32 z = vx_setzero_f32();
 
         for (int64_t nc = nc0; nc < nc1; nc++, inp += iplanesize) {
@@ -115,7 +116,7 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
                 bias[c] = bias_ ? bias_[c0 + c] : 0.f;
             }
 
-            for (int64_t y0 = 0; y0 < H; y0++, out += W*C0) {
+            for (int64_t y0 = 0; y0 < H; y0++, out += W*C0, residual += (residual ? W*C0 : 0)) {
                 //int64_t x0 = 0, x1 = W;
                 int64_t x0 = 0, x1 = y0 >= inner_y0 && y0 < inner_y1 ? inner_x0 : W;
                 int64_t yi_ = y0*SY - pad_y0;
@@ -136,6 +137,8 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
                                 s0 = v_fma(v0, w0, s0);
                             }
                             s0 = v_fma(s0, sc0, b0);
+                            if (residual)
+                                s0 = v_add(s0, v_load(residual + x0*C0));
                             s0 = v_min(v_select(v_ge(s0, z), s0, v_mul(s0, v_alpha)), v_maxval);
                             vx_store(out + x0*C0, s0);
                         }
@@ -161,6 +164,10 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
                                 }
                                 s0 = v_fma(s0, vx_load(scale + c), vx_load(bias + c));
                                 s1 = v_fma(s1, vx_load(scale + c + nlanes), vx_load(bias + c + nlanes));
+                                if (residual) {
+                                    s0 = v_add(s0, v_load(residual + x0*C0 + c));
+                                    s1 = v_add(s1, v_load(residual + x0*C0 + c + nlanes));
+                                }
                                 s0 = v_min(v_select(v_ge(s0, z), s0, v_mul(s0, v_alpha)), v_maxval);
                                 s1 = v_min(v_select(v_ge(s1, z), s1, v_mul(s1, v_alpha)), v_maxval);
                                 vx_store(out + x0*C0 + c, s0);
@@ -184,6 +191,8 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
                                 s0 = v_fma(v0, w0, s0);
                             }
                             s0 = v_fma(s0, sc0, b0);
+                            if (residual)
+                                s0 = v_add(s0, v_load(residual + x0*C0));
                             s0 = v_min(v_select(v_ge(s0, z), s0, v_mul(s0, v_alpha)), v_maxval);
                             vx_store(out + x0*C0, s0);
                         }
@@ -206,6 +215,10 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
                             }
                             s0 = v_fma(s0, sc0, b0);
                             s1 = v_fma(s1, sc1, b1);
+                            if (residual) {
+                                s0 = v_add(s0, v_load(residual + x0*C0));
+                                s1 = v_add(s1, v_load(residual + x0*C0 + nlanes));
+                            }
                             s0 = v_min(v_select(v_ge(s0, z), s0, v_mul(s0, v_alpha)), v_maxval);
                             s1 = v_min(v_select(v_ge(s1, z), s1, v_mul(s1, v_alpha)), v_maxval);
                             vx_store(out + x0*C0, s0);
@@ -236,6 +249,14 @@ static void conv2d_depthwise_32f(const void* inp__, void* out__, const ConvState
                                 s1 = v_fma(s1, vx_load(scale + c + nlanes), vx_load(bias + c + nlanes));
                                 s2 = v_fma(s2, vx_load(scale + c + nlanes*2), vx_load(bias + c + nlanes*2));
                                 s3 = v_fma(s3, vx_load(scale + c + nlanes*3), vx_load(bias + c + nlanes*3));
+
+                                if (residual) {
+                                    s0 = v_add(s0, v_load(residual + x0*C0 + c));
+                                    s1 = v_add(s1, v_load(residual + x0*C0 + c + nlanes));
+                                    s2 = v_add(s2, v_load(residual + x0*C0 + c + nlanes*2));
+                                    s3 = v_add(s3, v_load(residual + x0*C0 + c + nlanes*3));
+                                }
+
                                 s0 = v_min(v_select(v_ge(s0, z), s0, v_mul(s0, v_alpha)), v_maxval);
                                 s1 = v_min(v_select(v_ge(s1, z), s1, v_mul(s1, v_alpha)), v_maxval);
                                 s2 = v_min(v_select(v_ge(s2, z), s2, v_mul(s2, v_alpha)), v_maxval);
