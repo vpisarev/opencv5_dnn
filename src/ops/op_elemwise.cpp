@@ -928,8 +928,8 @@ public:
             int64_t BLOCK_SIZE = ninputs == 1 ? 1<<14 : 1<<17;
             int64_t nblocks = (slicesize + BLOCK_SIZE-1)/BLOCK_SIZE;
             parallel_for_(Range(0, (int)nblocks), [&](const Range& r) {
-                int64_t start = r.start*BLOCK_SIZE/nblocks;
-                int64_t end = std::min(r.end*BLOCK_SIZE/nblocks, slicesize);
+                int64_t start = r.start*slicesize/nblocks;
+                int64_t end = r.end*slicesize/nblocks;
                 const void* inptr[2];
                 void* outptr;
                 size_t curr_steps[3] = {steps[0][max_ndims-1], 1, 1};

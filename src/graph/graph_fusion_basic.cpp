@@ -115,7 +115,6 @@ struct ModelFusionBasic
                     }
                 }
 
-                #if 0
                 // merge residual 'add' into 'conv' node
                 if (elemwise && elemwise->opcode == ELWISE_ADD && ninputs == 2) {
                     ArgInfo& info0 = netimpl->args[inputs[0].idx];
@@ -151,9 +150,7 @@ struct ModelFusionBasic
                         }
                     }
                 }
-                #endif
 
-                #if 0
                 // merge convolution and activation
                 if (elemwise && ninputs == 1 &&
                     usecounts.at(inputs[0].idx) == 1) {
@@ -171,7 +168,6 @@ struct ModelFusionBasic
                         }
                     }
                 }
-                #endif
                 break;
             }
 

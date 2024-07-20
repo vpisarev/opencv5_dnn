@@ -622,7 +622,7 @@ public:
     virtual bool fuseActivation(const Op& op) override
     {
         ElemwiseOp* activ_ptr = dynamic_cast<ElemwiseOp*>(op.get());
-        if (activ_ptr->maxNumInputs() != 1 || activ || !activ_ptr || !activ_ptr->getActivation(CV_32F))
+        if (activ || activ_ptr->maxNumInputs() != 1 || !activ_ptr || !activ_ptr->getActivation(CV_32F))
             return false;
         activ = op;
         return true;
@@ -733,7 +733,7 @@ public:
         int* yxtab = (int*)(ofstab + ksize);
 
         ConvState cs = initConvState(net, inpsize, wsize0, params, activ, yxtab, ofstab);
-        bool conv1x1 = false;//cs.Hk == 1 && cs.Wk == 1;
+        bool conv1x1 = cs.Hk == 1 && cs.Wk == 1;
         bool depthwise = cs.ngroups == cs.C;
         const float* bias_data = bias.ptr<float>();
 

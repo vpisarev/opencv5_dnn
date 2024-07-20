@@ -29,6 +29,33 @@ void topK(const Mat& m, std::vector<float>& probs, std::vector<int>& labels, int
     }
 }
 
+static void blobFromImageWithParams_(const Mat& image, Mat& blob, const Image2BlobParams& pparams)
+{
+    int rows = image.rows, cols = image.cols, planesize = rows*cols;
+    int sizes[] = {1, 3, rows, cols};
+    blob.create(4, sizes, CV_32F);
+
+    float mr = (float)pparams.mean[0];
+    float mg = (float)pparams.mean[1];
+    float mb = (float)pparams.mean[2];
+
+    float sr = (float)pparams.scalefactor[0];
+    float sg = (float)pparams.scalefactor[1];
+    float sb = (float)pparams.scalefactor[2];
+
+    float* out = blob.ptr<float>();
+
+    for (int y = 0; y < rows; y++, out += cols) {
+        const uint8_t* inp = image.ptr<uint8_t>(y);
+        for (int x = 0; x < cols; x++) {
+            float b = (inp[x*3] - mb)*sb, g = (inp[x*3+1] - mg)*sg, r = (inp[x*3+2] - mr)*sr;
+            out[x] = r;
+            out[x+planesize] = g;
+            out[x+planesize*2] = b;
+        }
+    }
+}
+
 void test_imgclassify()
 {
     const char* model_root = getenv("OPENCV5_DNN_MODEL_PATH");
@@ -44,8 +71,8 @@ void test_imgclassify()
     ::cv::dnn::Image2BlobParams pparams;
     pparams.scalefactor = Scalar(1.f/(255*0.229f), 1.f/(255*0.224f), 1.f/(255*0.225f));
     pparams.size = Size(224, 224);
-    pparams.mean = Scalar(123.68f, 116.779f, 103.939f);
-    pparams.swapRB = true;
+    pparams.mean = Scalar(103.939f, 116.779f, 123.68f);
+    pparams.swapRB = false;
     pparams.ddepth = CV_32F;
     pparams.datalayout = DNN_LAYOUT_NCHW;
     pparams.paddingmode = DNN_PMODE_CROP_CENTER;

@@ -512,42 +512,38 @@ static void gemm( bool tA, bool tB, float alpha, float beta,
         parallel_for_(Range(0, (int)ntasks), [&](const Range& r) {
             AutoBuffer<char> packAbuf(bufsize);
             char* packA = packAbuf.data();
-            for( int tid = r.start; tid < r.end; tid++ )
+            char* packB = packA + KC*MC*w_esz;
+            int64_t start_tile = r.start*total_tiles/ntasks;
+            int64_t end_tile = r.end*total_tiles/ntasks;
+            for( int64_t tile_idx = start_tile; tile_idx < end_tile; tile_idx++ )
             {
-                char* packB = packA + KC*MC*w_esz;
-                int64_t start_tile = total_tiles*tid/ntasks;
-                int64_t end_tile = total_tiles*(tid+1)/ntasks;
+                int64_t i0 = (tile_idx / n_tiles)*MC;
+                int64_t j0 = (tile_idx % n_tiles)*NC;
+                int64_t mc = std::min(M - i0, MC);
+                int64_t nc = std::min(N - j0, NC);
+                int64_t ldc_block = ldc;
+                float* c_block = (float*)c + i0 * ldc + j0;
 
-                for( int64_t tile_idx = start_tile; tile_idx < end_tile; tile_idx++ )
+                for(int64_t i = 0; i < mc; i++) {
+                    for (int64_t j = 0; j < nc; j++)
+                        c_block[i*ldc_block + j] = 0.f;
+                }
+
+                for( int64_t k0 = 0; k0 < K; k0 += KC )
                 {
-                    int64_t i0 = (tile_idx / n_tiles)*MC;
-                    int64_t j0 = (tile_idx % n_tiles)*NC;
-                    int64_t mc = M - i0 < MC ? M - i0 : MC;
-                    int64_t nc = N - j0 < NC ? N - j0 : NC;
-                    int64_t ldc_block = ldc;
-                    float* c_block = (float*)c + i0 * ldc + j0;
+                    int64_t kc = K - k0 < KC ? K - k0 : KC;
+                    a_packer(mc, kc, a + (i0*lda0 + k0*lda1)*a_esz, lda0, lda1, packA);
+                    b_packer(nc, kc, b + (k0*ldb0 + j0*ldb1)*b_esz, ldb1, ldb0, packB);
+                    gemm_macro_kernel(w_typ, mc, nc, kc, packA, packB, alpha,
+                                      c_block, ldc_block, GEMM_MR, GEMM_NR);
+                }
 
+                if (bias_) {
                     for(int64_t i = 0; i < mc; i++) {
-                        for (int64_t j = 0; j < nc; j++)
-                            c_block[i*ldc_block + j] = 0.f;
-                    }
-
-                    for( int64_t k0 = 0; k0 < K; k0 += KC )
-                    {
-                        int64_t kc = K - k0 < KC ? K - k0 : KC;
-                        a_packer(mc, kc, a + (i0*lda0 + k0*lda1)*a_esz, lda0, lda1, packA);
-                        b_packer(nc, kc, b + (k0*ldb0 + j0*ldb1)*b_esz, ldb1, ldb0, packB);
-                        gemm_macro_kernel(w_typ, mc, nc, kc, packA, packB, alpha,
-                                          c_block, ldc_block, GEMM_MR, GEMM_NR);
-                    }
-
-                    if (bias_) {
-                        for(int64_t i = 0; i < mc; i++) {
-                            float* c_i = (float*)c_block + i*ldc_block;
-                            const float* bias_i = (const float*)bias_ + (i0 + i) * ldc + j0;
-                            for(int64_t j = 0; j < nc; j++)
-                                c_i[j] += bias_i[j]*beta;
-                        }
+                        float* c_i = (float*)c_block + i*ldc_block;
+                        const float* bias_i = (const float*)bias_ + (i0 + i) * ldbias0 + j0;
+                        for(int64_t j = 0; j < nc; j++)
+                            c_i[j] += bias_i[j]*beta;
                     }
                 }
             }
@@ -752,10 +748,10 @@ public:
         }*/
 
         gemm( transA, transB, alpha, beta,
-              inpsize.size[0], inpsize.size[1], inp.type(), inp.data(), inpsize.size[0], 1,
-              curr_w_size.size[0], curr_w_size.size[1], curr_w.type(), curr_w.data(), curr_w_size.size[0], 1,
+              inpsize.size[0], inpsize.size[1], inp.type(), inp.data(), inpsize.size[inpsize.ndims > 1], 1,
+              curr_w_size.size[0], curr_w_size.size[1], curr_w.type(), curr_w.data(), curr_w_size.size[1], 1,
               curr_b_size.size[0], curr_b_size.size[1], curr_b.type(), curr_b.data(), bias_step,
-              out.type(), out.data(), outsize.size[0], 8 );
+              out.type(), out.data(), outsize.size[1], 8 );
     }
 
     Tensor weights, bias;

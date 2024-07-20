@@ -22,7 +22,7 @@ void batchnorm(const _Tp* inp_, _Tp* out_, const TensorSize& size,
 
     CV_Assert(C0_ <= MAX_C0);
 
-    serial_for_(Range(0, (int)(N*C1)), [&](const Range& r) {
+    parallel_for_(Range(0, (int)(N*C1)), [&](const Range& r) {
         int64_t C = size.C, C0 = C0_;
         int64_t spatial_size = spatial_size_;
         float scale[MAX_C0], bias[MAX_C0];
