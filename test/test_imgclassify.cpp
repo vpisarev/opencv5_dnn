@@ -38,11 +38,11 @@ void test_imgclassify()
     string model_path = model_root + string("/resnet50-v1-12.onnx");
     OnnxReaderParams params;
     Net2 net = readNetFromONNX2(model_path, params);
-    net.dump();
+    //net.dump();
     string image_path = model_root + string("/images/sqcat.png");
     Mat image = imread(image_path, 1), blob;
     ::cv::dnn::Image2BlobParams pparams;
-    pparams.scalefactor = 1.f/(255*0.225f);
+    pparams.scalefactor = Scalar(1.f/(255*0.229f), 1.f/(255*0.224f), 1.f/(255*0.225f));
     pparams.size = Size(224, 224);
     pparams.mean = Scalar(123.68f, 116.779f, 103.939f);
     pparams.swapRB = true;
@@ -51,6 +51,7 @@ void test_imgclassify()
     pparams.paddingmode = DNN_PMODE_CROP_CENTER;
     blobFromImageWithParams(image, blob, pparams);
     std::vector<Mat> inputs = {blob}, outputs;
+    net.setTracingMode(DNN_TRACE_ALL);
     net.forward(inputs, outputs);
     CV_Assert(outputs.size() == 1);
     const Mat& out = outputs[0];

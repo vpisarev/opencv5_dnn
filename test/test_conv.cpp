@@ -133,6 +133,7 @@ void ref_conv2d(const Tensor& inp_, Tensor& out_, const ConvParams& params,
         int64_t Hk = wsize.size[2], Wk = wsize.size[3];
         int64_t H0 = outsize.size[2], W0 = outsize.size[3];
         int64_t Cg = C/ngroups, Kg = K/ngroups;
+        int64_t ototal = N*K*H0*W0;
 
         int64_t iplanesize = Hi*Wi;
         int64_t planesize = H0*W0;
@@ -188,7 +189,9 @@ void ref_conv2d(const Tensor& inp_, Tensor& out_, const ConvParams& params,
                             }
                         }
                     }
-                    out[((n*K + k)*H0 + y0)*W0 + x0] = s + b;
+                    int64_t out_ofs = ((n*K + k)*H0 + y0)*W0 + x0;
+                    CV_Assert(0 <= out_ofs && out_ofs < ototal);
+                    out[out_ofs] = s + b;
                 }
             }
         }
@@ -208,11 +211,11 @@ void test_conv()
         std::cout << ".";
         std::cout.flush();
         bool depthwise = rand() % 5 == 0;
-        int64_t N = 2;//(rand() % 4) + 1;
-        int64_t C1 = 3;//(rand() % 3) + 1;
+        int64_t N = (rand() % 4) + 1;
+        int64_t C1 = (rand() % 3) + 1;
         int64_t C0 = 4;//(rand() % 2) ? nlanes*2 : nlanes;
         int64_t K1 = depthwise ? C1 : (rand() % 3) + 1;
-#if 1
+#if 0
         int Hk = (rand() % 3)*2 + 1;
         int Wk = (rand() % 3)*2 + 1;
         int SY = (rand() % 2) + 1;
@@ -223,25 +226,29 @@ void test_conv()
         int pad_y1 = (rand() % 2) ? Hk/2 : 0;
         int pad_x0 = (rand() % 2) ? Wk/2 : 0;
         int pad_x1 = (rand() % 2) ? Wk/2 : 0;
-#else
-        int Hk = 3, Wk = 3;
-        int SY = 1, SX = 1;
-        int DY = 1, DX = 1;
-        int pad_y0 = 1, pad_x0 = 1, pad_y1 = 1, pad_x1 = 1;
-#endif
-        if (Hk == 1)
-            SY = DY = 1;
-        if (Wk == 1)
-            SX = DX = 1;
         int ngroups = rand() % 2 + 1;
         if (depthwise)
             ngroups = (int)(C0*C1);
+#else
+        int Hk = 7, Wk = 7;
+        int SY = 2, SX = 2;
+        int DY = 1, DX = 1;
+        int pad_y0 = Hk/2, pad_x0 = Wk/2, pad_y1 = Hk/2, pad_x1 = Wk/2;
+        N = 1;
+        C1 = 1;
+        K1 = 8;
+        int ngroups = 1;
+#endif
+        if (Hk == 1)
+            DY = 1;
+        if (Wk == 1)
+            DX = 1;
 
         if (!depthwise && ngroups > 1) {
             C1 = ((C1 + ngroups - 1) / ngroups) * ngroups;
             K1 = ((K1 + ngroups - 1) / ngroups) * ngroups;
         }
-        int64_t K = K1*C0, C = C1*C0;
+        int64_t K = K1*C0, C = 3;//C1*C0;
 
         int64_t Hi = ((rand() % 21) + 1)*SY + (Hk-1)*DY + pad_y0 + pad_y1 + 1;
         int64_t Wi = ((rand() % 21) + 1)*SX + (Wk-1)*DX + pad_x0 + pad_x1 + 1;
@@ -285,13 +292,16 @@ void test_conv()
         Op conv = ConvOp::create(params);
         dynamic_cast<ConvOp*>(conv.get())->setWeights(w, bias, C0);
 
+        TensorSize outsize = ref_conv_infer_shapes(a0.size(), params, w.size());
+        int64_t H0 = outsize.size[2], W0 = outsize.size[3];
+
         nchw2block->forward(net, graph, {a0}, a, tmp);
         block2nchw->forward(net, graph, {a}, a0_, tmp);
+        c0_.fit({{N, K1, H0, W0, C0}, LAYOUT_NCHWc}, CV_32F);
         conv->forward(net, graph, {a}, c0_, tmp);
         block2nchw->forward(net, graph, {c0_}, c0, tmp);
 
-        TensorSize outsize = ref_conv_infer_shapes(a0.size(), params, w.size());
-        c1.fitSameDevice(a, outsize, a.type());
+        c1.fit(outsize, a0.type());
         ref_conv2d(a0, c1, params, w, bias);
 
         Mat ma0 = a0.getMat();

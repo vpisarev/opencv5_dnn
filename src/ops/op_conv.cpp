@@ -100,6 +100,23 @@ static void initConv2DTables(const ConvState& cs,
     });
 }
 
+template<typename _InpT, typename _OutT> void
+repackConvWeights_(const _InpT* inpw_, _OutT* outw_,
+                   int64_t inp_step_c, int64_t inp_step_k, int64_t HkWk,
+                   int64_t C0, int64_t K0, int64_t curr_C0, int64_t curr_K0)
+{
+    const _InpT* inpw = inpw_;
+    _OutT* outw = outw_;
+    for (int64_t xy = 0; xy < HkWk; xy++, inpw++, outw += C0*K0) {
+        for (int64_t c0 = 0; c0 < curr_C0; c0++) {
+            for (int64_t k0 = 0; k0 < curr_K0; k0++) {
+                outw[c0*K0 + k0] = _OutT(inpw[inp_step_k*k0 + inp_step_c*c0]);
+            }
+        }
+    }
+}
+
+
 // K x (C/ngroups) x Hk x Wk => K1 x C1/ngroups x Hk x Wk x C0 x K0,
 // where K0 == C0
 static void repackConvWeights(const void* inpw__, int inptype_, void* outw__, int outtype_,
@@ -117,7 +134,7 @@ static void repackConvWeights(const void* inpw__, int inptype_, void* outw__, in
         int64_t K = wsize.size[0], Cg = wsize.size[1];
         int64_t K1 = K1_, C1g = (Cg + C0 - 1)/C0;
         int64_t Hk = wsize.size[2], Wk = wsize.size[3];
-        size_t inp_step_c = Hk*Wk, inp_step_k = C1g*C0*Hk*Wk;
+        size_t inp_step_c = Hk*Wk, inp_step_k = Cg*Hk*Wk;
         size_t out_microplane_size = Hk*Wk*C0*K0*out_esz;
 
         for (int64_t k1 = r.start; k1 < r.end; k1++) {
@@ -129,23 +146,18 @@ static void repackConvWeights(const void* inpw__, int inptype_, void* outw__, in
                 if (curr_K0 != K0 || curr_C0 != C0)
                     memset(outw_, 0, out_microplane_size);
 
-                #define REPACK_WEIGHTS_CASE(inpT, outT) \
-                    (inptype == DataType<inpT>::depth && outtype == DataType<outT>::depth) { \
-                        const inpT* inpw = (const inpT*)inpw_; \
-                        outT* outw = (outT*)outw_; \
-                        for (int64_t xy = 0; xy < Hk*Wk; xy++, inpw++, outw += C0*K0) { \
-                            for (int64_t c0 = 0; c0 < curr_C0; c0++) { \
-                                for (int64_t k0 = 0; k0 < curr_K0; k0++) { \
-                                    outw[c0*K0 + k0] = outT(inpw[inp_step_k*k0 + inp_step_c*c0]); \
-                                } \
-                            } \
-                        } \
-                    }
-
-                if REPACK_WEIGHTS_CASE(float, float)
-                else if REPACK_WEIGHTS_CASE(float, hfloat)
-                else if REPACK_WEIGHTS_CASE(hfloat, float)
-                else if REPACK_WEIGHTS_CASE(hfloat, hfloat)
+                if (inptype == CV_32F && outtype == CV_32F)
+                    repackConvWeights_((const float*)inpw_, (float*)outw_, inp_step_c,
+                                       inp_step_k, Hk*Wk, C0, K0, curr_C0, curr_K0);
+                else if (inptype == CV_32F && outtype == CV_16F)
+                    repackConvWeights_((const float*)inpw_, (hfloat*)outw_, inp_step_c,
+                                       inp_step_k, Hk*Wk, C0, K0, curr_C0, curr_K0);
+                else if (inptype == CV_16F && outtype == CV_32F)
+                    repackConvWeights_((const hfloat*)inpw_, (float*)outw_, inp_step_c,
+                                       inp_step_k, Hk*Wk, C0, K0, curr_C0, curr_K0);
+                else if (inptype == CV_16F && outtype == CV_16F)
+                    repackConvWeights_((const hfloat*)inpw_, (hfloat*)outw_, inp_step_c,
+                                       inp_step_k, Hk*Wk, C0, K0, curr_C0, curr_K0);
                 else break;
             }
         }
@@ -721,7 +733,7 @@ public:
         int* yxtab = (int*)(ofstab + ksize);
 
         ConvState cs = initConvState(net, inpsize, wsize0, params, activ, yxtab, ofstab);
-        bool conv1x1 = cs.Hk == 1 && cs.Wk == 1;
+        bool conv1x1 = false;//cs.Hk == 1 && cs.Wk == 1;
         bool depthwise = cs.ngroups == cs.C;
         const float* bias_data = bias.ptr<float>();
 

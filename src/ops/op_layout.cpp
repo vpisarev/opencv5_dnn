@@ -59,8 +59,10 @@ void transform_layout(const _Tp* inp_, int64_t istep, int64_t istep0, int64_t is
                     int64_t c = 0;
                     for (; c < dc; c++)
                         out[ostep0*c] = inp[istep0*c];
-                    for (; c < dC0; c++)
-                        out[ostep0*c] = 0;
+                    if (ostep == C0) {
+                        for (; c < dC0; c++)
+                            out[ostep0*c] = 0;
+                    }
                 }
             }
         }

@@ -437,7 +437,7 @@ public:
 protected:
     bool ispattern_;
     Net2* net_;
-    std::string_view name_;
+    std::string name_;
     std::vector<Arg> inputs_;
     std::vector<Arg> outputs_;
     std::vector<Node> prog_;

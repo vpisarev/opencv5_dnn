@@ -52,6 +52,10 @@ struct Net2::Impl
     void checkArg(Arg arg) const;
     void checkAndUpdateDim(const Graph& g, const Node& node, Arg inp, int j, int64_t value);
 
+    void traceArg(std::ostream& strm_, const char* prefix, size_t i, Arg arg, bool dumpdata);
+    Op fromBlock;
+    Tensor fromBlockResult;
+
     void inferTypes();
     void inferShapes(bool symbolic);
     void assignBuffers();

@@ -75,6 +75,8 @@ void Net2::Impl::clear()
     pattern_args.push_back(info);
     tensors.push_back(Tensor());
     bufidxs.push_back(-1);
+
+    fromBlock = TransformLayoutOp::create(LAYOUT_NCHW);
 }
 
 void Net2::Impl::forward(const std::vector<Tensor>& inputs, std::vector<Tensor>& outputs)
@@ -113,19 +115,49 @@ void Net2::Impl::checkAndUpdateDim(const Graph& g, const Node& node, Arg inp, in
     }
 }
 
-void Net2::Impl::forwardGraph(Graph& g, const std::vector<Tensor>& inputs_,
+void Net2::Impl::traceArg(std::ostream& strm_, const char* prefix, size_t i, Arg arg, bool dumpdata)
+{
+    char buf[128];
+    const Tensor& t = tensors.at(arg.idx);
+    const ArgInfo& info = args.at(arg.idx);
+    CV_Assert(t.type() == info.type);
+    strm_ << prefix << " " << i << ". Name: " << info.name << "\n";
+    strm_ << "  Buf: " << bufidxs.at(arg.idx) << "\n";
+    strm_ << "  Type: " << typeToString(info.type) << " \n";
+    TensorSize size = t.size();
+    strm_ << "  Shape: {";
+    for (int i = 0; i < size.ndims; i++) {
+        strm_ << (i > 0 ? ", " : "") << size.size[i];
+    }
+    strm_ << "}\n  Layout: " << layoutToString(size.layout) << "\n";
+    if (dumpdata) {
+        Tensor temp;
+        if (size.layout == LAYOUT_NCHWc) {
+            fromBlock->forward(*net, mainGraph, {t}, {fromBlockResult}, scratch_bufs);
+            temp = fromBlockResult;
+        } else {
+            temp = t;
+        }
+        temp.dump(strm_, 0);
+        strm_ << "\n";
+    }
+}
+
+void Net2::Impl::forwardGraph(Graph& graph, const std::vector<Tensor>& inputs_,
                               std::vector<Tensor>& outputs_)
 {
-    const std::vector<Node>& prog = g->prog();
-    size_t i, j, nops = prog.size();
-    const std::vector<Arg>& gr_inputs = g->inputs();
-    const std::vector<Arg>& gr_outputs = g->outputs();
+    std::ostream& strm_ = strm ? *strm : std::cout;
+    const std::vector<Node>& prog = graph->prog();
+    size_t i, nops = prog.size();
+    const std::vector<Arg>& gr_inputs = graph->inputs();
+    const std::vector<Arg>& gr_outputs = graph->outputs();
     size_t n_gr_inputs = gr_inputs.size(), n_gr_outputs = gr_outputs.size();
     std::vector<Tensor> t_inputs, t_outputs;
+    double timestamp = 0;
 
     if (inputs_.size() != n_gr_inputs) {
         CV_Error_(Error::StsBadArg, ("wrong number of inputs in graph '%s': %zu given, %zu expected",
-                                     g->name().data(), inputs_.size(), n_gr_inputs));
+                                     graph->name().data(), inputs_.size(), n_gr_inputs));
     }
 
     for (i = 0; i < n_gr_inputs; i++) {
@@ -147,7 +179,7 @@ void Net2::Impl::forwardGraph(Graph& g, const std::vector<Tensor>& inputs_,
         }
         
         for (int k = 0; k < tsize.ndims; k++) {
-            checkAndUpdateDim(g, Node(), inp, k, tsize.size[k]);
+            checkAndUpdateDim(graph, Node(), inp, k, tsize.size[k]);
         }
 
         if (info.kind == DNN_ARG_INPUT) {
@@ -160,15 +192,17 @@ void Net2::Impl::forwardGraph(Graph& g, const std::vector<Tensor>& inputs_,
             tensors[inp.idx] = temp;
         } else {
             CV_Error_(Error::StsBadArg, ("graph %s: argument '%s' must be 'INPUT' or 'TEMP', not '%s'",
-                                         g->name().data(), info.name.c_str(), argKindToString(info.kind).c_str()));
+                                         graph->name().data(), info.name.c_str(), argKindToString(info.kind).c_str()));
         }
     }
 
-    for (j = 0; j < nops; j++) {
-        const Node& node = prog[j];
+    for (size_t opidx = 0; opidx < nops; opidx++) {
+        const Node& node = prog[opidx];
         if (!node)
             continue;
-        printf("running '%s' (%s)\n", node->name().data(), node->op()->name().data());
+        Op& op = node->op();
+        if (!op)
+            continue;
         const std::vector<Arg>& inputs = node->inputs();
         const std::vector<Arg>& outputs = node->outputs();
         size_t ninputs = inputs.size(), noutputs = outputs.size();
@@ -192,10 +226,19 @@ void Net2::Impl::forwardGraph(Graph& g, const std::vector<Tensor>& inputs_,
             }
         }
 
+        if (tracingMode != DNN_TRACE_NONE) {
+            strm_ << "-----------\n";
+            strm_ << "'" << graph->name() << "' [" << opidx << "/" << nops << "]. " << op->name() << " node: " << node->name() << "\n";
+            for (i = 0; i < ninputs; i++) {
+                Arg inp = inputs[i];
+                traceArg(strm_, "Input", i, inp, false);
+            }
+            timestamp = (double)getTickCount();
+        }
+
         // [TODO] handle If/Loop/...
         CV_Assert(node->subgraphs().empty());
-        Op& op = node->op();
-        op->forward(*net, g, t_inputs, t_outputs, scratch_bufs);
+        op->forward(*net, graph, t_inputs, t_outputs, scratch_bufs);
         CV_Assert(t_outputs.size() == noutputs);
 
         for (i = 0; i < noutputs; i++) {
@@ -208,6 +251,16 @@ void Net2::Impl::forwardGraph(Graph& g, const std::vector<Tensor>& inputs_,
             if (info.kind == DNN_ARG_TEMP) {
                 int bufidx = bufidxs[out.idx];
                 buffers[bufidx] = t.buffer();
+            }
+        }
+
+        if (tracingMode != DNN_TRACE_NONE) {
+            timestamp = (double)getTickCount() - timestamp;
+            strm_ << "TIME (\"" << node->name() << "\", \"" << op->name() << "\"): " <<
+                format("%.2fms", timestamp*1000/getTickFrequency()) << "\n";
+            for (i = 0; i < noutputs; i++) {
+                Arg out = outputs[i];
+                traceArg(strm_, "Output", i, out, tracingMode == DNN_TRACE_ALL);
             }
         }
     }

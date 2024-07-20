@@ -82,7 +82,6 @@ void Net2::getOutputNames(std::vector<std::string>& outputs) const
 void Net2::setTracingMode(TracingMode mode)
 {
     p->tracingMode = mode;
-
 }
 
 TracingMode Net2::getTracingMode() const
