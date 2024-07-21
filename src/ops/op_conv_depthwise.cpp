@@ -33,8 +33,8 @@ void repackDepthwiseConvWeights(const void* inpw__, int inptype_, void* outw__, 
             if (curr_C0 < C0)
                 memset(outw_, 0, Hk*Wk*C0*out_esz);
 
-            #define REPACK_WEIGHTS_CASE(inpT, outT) \
-                (inptype == DataType<inpT>::depth && outtype == DataType<outT>::depth) { \
+            #define REPACK_WEIGHTS_CASE(inptype_, inpT, outtype_, outT) \
+                (inptype == inptype_ && outtype == outtype_) { \
                     const inpT* inpw = (const inpT*)inpw_; \
                     outT* outw = (outT*)outw_; \
                     for (int64_t xy = 0; xy < Hk*Wk; xy++, inpw++, outw += C0) { \
@@ -44,10 +44,10 @@ void repackDepthwiseConvWeights(const void* inpw__, int inptype_, void* outw__, 
                     } \
                 }
 
-            if REPACK_WEIGHTS_CASE(float, float)
-            else if REPACK_WEIGHTS_CASE(float, hfloat)
-            else if REPACK_WEIGHTS_CASE(hfloat, float)
-            else if REPACK_WEIGHTS_CASE(hfloat, hfloat)
+            if REPACK_WEIGHTS_CASE(CV_32F, float, CV_32F, float)
+            else if REPACK_WEIGHTS_CASE(CV_32F, float, CV_16F, hfloat)
+            else if REPACK_WEIGHTS_CASE(CV_16F, hfloat, CV_32F, float)
+            else if REPACK_WEIGHTS_CASE(CV_16F, hfloat, CV_16F, hfloat)
             else break;
         }
     });

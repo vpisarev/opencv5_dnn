@@ -203,12 +203,12 @@ void global_average_pool_16(const _Tp* inp_, const TensorSize& size, _Tp* out_)
 
 static void global_average_pool_16f(const void* inp_, const TensorSize& size, void* out_)
 {
-    global_average_pool_16((const float16_t*)inp_, size, (float16_t*)out_);
+    global_average_pool_16((const hfloat*)inp_, size, (hfloat*)out_);
 }
 
 static void global_average_pool_16bf(const void* inp_, const TensorSize& size, void* out_)
 {
-    global_average_pool_16((const bfloat16_t*)inp_, size, (bfloat16_t*)out_);
+    global_average_pool_16((const bfloat*)inp_, size, (bfloat*)out_);
 }
 
 typedef void (*global_avgpool_func_t)(const void* inp, const TensorSize& size, void* out);

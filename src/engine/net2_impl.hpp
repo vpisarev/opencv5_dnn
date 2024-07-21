@@ -9,8 +9,6 @@
 
 namespace cv { namespace dnn {
 
-typedef float16_t hfloat;
-
 struct OnnxTensorDim
 {
     OnnxTensorDim() : value(-1) {}

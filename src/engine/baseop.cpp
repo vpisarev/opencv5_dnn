@@ -46,9 +46,9 @@ void BaseOp::dumpScalarAttr(std::ostream& strm, std::string_view name,
     else if (type == CV_64F)
         strm << *(const double*)scalar;
     else if (type == CV_16F)
-        strm << (float)*(const cv::float16_t*)scalar;
+        strm << (float)*(const hfloat*)scalar;
     else if (type == CV_16BF)
-        strm << (float)*(const cv::bfloat16_t*)scalar;
+        strm << (float)*(const bfloat*)scalar;
     else if (type == CV_Bool)
         strm << (*(const bool*)scalar ? "true" : "false");
     else {

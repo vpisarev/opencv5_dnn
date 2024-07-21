@@ -636,8 +636,8 @@ static void cvtScalar(int srctype, const void* src, int dsttype, void* dst, doub
             sdepth == CV_64S ? (double)((const int64_t*)src)[i] :
             sdepth == CV_32F ? (double)((const float*)src)[i] :
             sdepth == CV_64F ? (double)((const double*)src)[i] :
-            sdepth == CV_16F ? (double)((const cv::float16_t*)src)[i] :
-            sdepth == CV_16BF ? (double)((const cv::bfloat16_t*)src)[i] :
+            sdepth == CV_16F ? (double)((const hfloat*)src)[i] :
+            sdepth == CV_16BF ? (double)((const bfloat*)src)[i] :
             sdepth == CV_Bool ? (double)((const bool*)src)[i] : 0.;
     }
     for (int i = 0; i < dcn; i++) {
@@ -663,9 +663,9 @@ static void cvtScalar(int srctype, const void* src, int dsttype, void* dst, doub
         else if (ddepth == CV_64F)
             ((double*)dst)[i] = saturate_cast<double>(temp[j]);
         else if (ddepth == CV_16F)
-            ((cv::float16_t*)dst)[i] = saturate_cast<cv::float16_t>(temp[j]);
+            ((hfloat*)dst)[i] = saturate_cast<hfloat>(temp[j]);
         else if (ddepth == CV_16BF)
-            ((cv::bfloat16_t*)dst)[i] = saturate_cast<cv::bfloat16_t>(temp[j]);
+            ((bfloat*)dst)[i] = saturate_cast<bfloat>(temp[j]);
         else if (ddepth == CV_Bool)
             ((bool*)dst)[i] = temp[j] != 0;
         else
@@ -778,13 +778,13 @@ template<> struct Fmt<double>
     static const char* fmt() { return "%.5g"; }
 };
 
-template<> struct Fmt<cv::float16_t>
+template<> struct Fmt<hfloat>
 {
     typedef float temp_type;
     static const char* fmt() { return "%.5g"; }
 };
 
-template<> struct Fmt<cv::bfloat16_t>
+template<> struct Fmt<bfloat>
 {
     typedef float temp_type;
     static const char* fmt() { return "%.4g"; }
@@ -840,9 +840,9 @@ static void dumpSlice(std::ostream& strm, const Tensor& t, const size_t* step, i
         else if (typ == CV_64F)
             dumpRow(strm, (const double*)data, n, ofs, border);
         else if (typ == CV_16F)
-            dumpRow(strm, (const cv::float16_t*)data, n, ofs, border);
+            dumpRow(strm, (const hfloat*)data, n, ofs, border);
         else if (typ == CV_16BF)
-            dumpRow(strm, (const cv::bfloat16_t*)data, n, ofs, border);
+            dumpRow(strm, (const bfloat*)data, n, ofs, border);
         else if (typ == CV_Bool)
             dumpRow(strm, (const bool*)data, n, ofs, border);
         else {

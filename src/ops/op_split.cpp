@@ -8,8 +8,8 @@
 
 namespace cv { namespace dnn {
 
-Arg split(Graph& graph, std::string_view opname, std::string_view outname,
-          Arg input, Arg split, int axis, size_t noutputs)
+std::vector<Arg> split(Graph& graph, std::string_view opname, std::string_view outname,
+                       Arg input, Arg split, int axis, size_t noutputs)
 {
 
 }

@@ -333,7 +333,7 @@ static Tensor onnxParseTensor(string_view ctx,
         float* dst = (float*)data;
         for(size_t j = 0; j < total; j++) {
             ushort bits = (ushort)(tensor_proto->int32_data[j]);
-            dst[j] = (float)float16_t::fromBits(bits);
+            dst[j] = (float)reinterpret_cast<hfloat&>(bits);
         }
     } else if (elemsize == 4 && tensor_proto->raw_data.len == total*4) {
         uint32_t* dst = (uint32_t*)data;

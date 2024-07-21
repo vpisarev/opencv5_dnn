@@ -60,10 +60,10 @@ CV_REDUCE_IMPL(uint64_t, uint64_t, max_64u, CV_REDUCE_OP_MAX, 0)
 CV_REDUCE_IMPL(uint64_t, uint64_t, min_64u, CV_REDUCE_OP_MIN, 0xffffffffffffffffUL)
 CV_REDUCE_IMPL(float, float, max_32f, CV_REDUCE_OP_MAX, -FLT_MAX)
 CV_REDUCE_IMPL(float, float, min_32f, CV_REDUCE_OP_MIN, FLT_MAX)
-CV_REDUCE_IMPL(cv::float16_t, float, max_16f32f, CV_REDUCE_OP_MAX, -FLT_MAX)
-CV_REDUCE_IMPL(cv::float16_t, float, min_16f32f, CV_REDUCE_OP_MIN, FLT_MAX)
-CV_REDUCE_IMPL(cv::bfloat16_t, float, max_16bf32f, CV_REDUCE_OP_MAX, -FLT_MAX)
-CV_REDUCE_IMPL(cv::bfloat16_t, float, min_16bf32f, CV_REDUCE_OP_MIN, FLT_MAX)
+CV_REDUCE_IMPL(hfloat, float, max_16f32f, CV_REDUCE_OP_MAX, -FLT_MAX)
+CV_REDUCE_IMPL(hfloat, float, min_16f32f, CV_REDUCE_OP_MIN, FLT_MAX)
+CV_REDUCE_IMPL(bfloat, float, max_16bf32f, CV_REDUCE_OP_MAX, -FLT_MAX)
+CV_REDUCE_IMPL(bfloat, float, min_16bf32f, CV_REDUCE_OP_MIN, FLT_MAX)
 
 CV_REDUCE_IMPL(int8_t, int64_t, sum_8s64s, CV_REDUCE_OP_SUM, 0)
 CV_REDUCE_IMPL(uint8_t, uint64_t, sum_8u64u, CV_REDUCE_OP_SUM, 0)
@@ -72,30 +72,30 @@ CV_REDUCE_IMPL(uint32_t, uint64_t, sum_32u64u, CV_REDUCE_OP_SUM, 0)
 CV_REDUCE_IMPL(int64_t, int64_t, sum_64s, CV_REDUCE_OP_SUM, 0)
 CV_REDUCE_IMPL(uint64_t, uint64_t, sum_64u, CV_REDUCE_OP_SUM, 0)
 CV_REDUCE_IMPL(float, double, sum_32f64f, CV_REDUCE_OP_SUM, 0.)
-CV_REDUCE_IMPL(cv::float16_t, float, sum_16f32f, CV_REDUCE_OP_SUM, 0.f)
-CV_REDUCE_IMPL(cv::bfloat16_t, float, sum_16bf32f, CV_REDUCE_OP_SUM, 0.f)
+CV_REDUCE_IMPL(hfloat, float, sum_16f32f, CV_REDUCE_OP_SUM, 0.f)
+CV_REDUCE_IMPL(bfloat, float, sum_16bf32f, CV_REDUCE_OP_SUM, 0.f)
 
 CV_REDUCE_IMPL(int32_t, int64_t, sum_abs_32s64s, CV_REDUCE_OP_SUM_ABS, 0)
 CV_REDUCE_IMPL(int64_t, int64_t, sum_abs_64s, CV_REDUCE_OP_SUM_ABS, 0)
 CV_REDUCE_IMPL(float, double, sum_abs_32f64f, CV_REDUCE_OP_SUM_ABSF, 0.)
-CV_REDUCE_IMPL(cv::float16_t, float, sum_abs_16f32f, CV_REDUCE_OP_SUM_ABSF, 0.f)
-CV_REDUCE_IMPL(cv::bfloat16_t, float, sum_abs_16bf32f, CV_REDUCE_OP_SUM_ABSF, 0.f)
+CV_REDUCE_IMPL(hfloat, float, sum_abs_16f32f, CV_REDUCE_OP_SUM_ABSF, 0.f)
+CV_REDUCE_IMPL(bfloat, float, sum_abs_16bf32f, CV_REDUCE_OP_SUM_ABSF, 0.f)
 
 CV_REDUCE_IMPL(int32_t, int64_t, sum_sqr_32s64u, CV_REDUCE_OP_SUM_SQR, 0)
 CV_REDUCE_IMPL(uint32_t, uint64_t, sum_sqr_32u64u, CV_REDUCE_OP_SUM_SQR, 0)
 CV_REDUCE_IMPL(int64_t, int64_t, sum_sqr_64s, CV_REDUCE_OP_SUM_SQR, 0)
 CV_REDUCE_IMPL(uint64_t, uint64_t, sum_sqr_64u, CV_REDUCE_OP_SUM_SQR, 0)
 CV_REDUCE_IMPL(float, double, sum_sqr_32f64f, CV_REDUCE_OP_SUM_SQR, 0.)
-CV_REDUCE_IMPL(cv::float16_t, double, sum_sqr_16f64f, CV_REDUCE_OP_SUM_SQR, 0.)
-CV_REDUCE_IMPL(cv::bfloat16_t, double, sum_sqr_16bf64f, CV_REDUCE_OP_SUM_SQR, 0.)
+CV_REDUCE_IMPL(hfloat, double, sum_sqr_16f64f, CV_REDUCE_OP_SUM_SQR, 0.)
+CV_REDUCE_IMPL(bfloat, double, sum_sqr_16bf64f, CV_REDUCE_OP_SUM_SQR, 0.)
 
 CV_REDUCE_IMPL(int32_t, int64_t, prod_32s64s, CV_REDUCE_OP_PROD, 1)
 CV_REDUCE_IMPL(uint32_t, uint64_t, prod_32u64u, CV_REDUCE_OP_PROD, 1)
 CV_REDUCE_IMPL(int64_t, int64_t, prod_64s, CV_REDUCE_OP_PROD, 1)
 CV_REDUCE_IMPL(uint64_t, uint64_t, prod_64u, CV_REDUCE_OP_PROD, 1)
 CV_REDUCE_IMPL(float, double, prod_32f64f, CV_REDUCE_OP_PROD, 1.)
-CV_REDUCE_IMPL(cv::float16_t, double, prod_16f64f, CV_REDUCE_OP_PROD, 1.)
-CV_REDUCE_IMPL(cv::bfloat16_t, double, prod_16bf64f, CV_REDUCE_OP_PROD, 1.)
+CV_REDUCE_IMPL(hfloat, double, prod_16f64f, CV_REDUCE_OP_PROD, 1.)
+CV_REDUCE_IMPL(bfloat, double, prod_16bf64f, CV_REDUCE_OP_PROD, 1.)
 
 #undef CV_REDUCE_FINIT_COPY
 #define CV_REDUCE_FINIT_COPY(typ, suffix) \
@@ -122,10 +122,10 @@ CV_REDUCE_FINIT_CAST(int64_t, int32_t, 64s32s)
 CV_REDUCE_FINIT_CAST(uint64_t, int32_t, 64u32s)
 CV_REDUCE_FINIT_CAST(uint64_t, uint32_t, 64u32u)
 CV_REDUCE_FINIT_CAST(double, float, 64f32f)
-CV_REDUCE_FINIT_CAST(float, cv::float16_t, 32f16f)
-CV_REDUCE_FINIT_CAST(float, cv::bfloat16_t, 32f16bf)
-CV_REDUCE_FINIT_CAST(double, cv::float16_t, 64f16f)
-CV_REDUCE_FINIT_CAST(double, cv::bfloat16_t, 64f16bf)
+CV_REDUCE_FINIT_CAST(float, hfloat, 32f16f)
+CV_REDUCE_FINIT_CAST(float, bfloat, 32f16bf)
+CV_REDUCE_FINIT_CAST(double, hfloat, 64f16f)
+CV_REDUCE_FINIT_CAST(double, bfloat, 64f16bf)
 
 #undef CV_REDUCE_FINIT_SCALE
 #define CV_REDUCE_FINIT_SCALE(inptyp, outtyp, suffix) \
@@ -139,8 +139,8 @@ static void reduce_finit_scale_##suffix(const void* inptr_, void* outptr_, int64
 }
 
 CV_REDUCE_FINIT_SCALE(double, float, 64f32f)
-CV_REDUCE_FINIT_SCALE(float, cv::float16_t, 32f16f)
-CV_REDUCE_FINIT_SCALE(float, cv::bfloat16_t, 32f16bf)
+CV_REDUCE_FINIT_SCALE(float, hfloat, 32f16f)
+CV_REDUCE_FINIT_SCALE(float, bfloat, 32f16bf)
 
 #undef CV_REDUCE_FINIT_SQRT
 #define CV_REDUCE_FINIT_SQRT(inptyp, outtyp, suffix) \
@@ -153,8 +153,8 @@ static void reduce_finit_sqrt_##suffix(const void* inptr_, void* outptr_, int64_
 }
 
 CV_REDUCE_FINIT_SQRT(double, float, 64f32f)
-CV_REDUCE_FINIT_SQRT(double, cv::float16_t, 32f16f)
-CV_REDUCE_FINIT_SQRT(double, cv::bfloat16_t, 32f16bf)
+CV_REDUCE_FINIT_SQRT(double, hfloat, 32f16f)
+CV_REDUCE_FINIT_SQRT(double, bfloat, 32f16bf)
 
 typedef void (*reduce_func_t)(const void* inptr, int64_t ystep, void* outptr,
                               int64_t nrows, int64_t ncols, int rdim, bool init);

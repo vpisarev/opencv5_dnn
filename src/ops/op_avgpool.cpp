@@ -318,13 +318,13 @@ static void avgpool2d_16(const _Tp* inp_, _Tp* out_, const ConvState& cs, bool c
 static void avgpool2d_16f(const void* inp_, void* out_,
                           const ConvState& cs, bool countIncludePadding)
 {
-    avgpool2d_16((const float16_t*)inp_, (float16_t*)out_, cs, countIncludePadding);
+    avgpool2d_16((const hfloat*)inp_, (hfloat*)out_, cs, countIncludePadding);
 }
 
 static void avgpool2d_16bf(const void* inp_, void* out_,
                            const ConvState& cs, bool countIncludePadding)
 {
-    avgpool2d_16((const bfloat16_t*)inp_, (bfloat16_t*)out_, cs, countIncludePadding);
+    avgpool2d_16((const bfloat*)inp_, (bfloat*)out_, cs, countIncludePadding);
 }
 
 typedef void (*avgpool_func_t)(const void* inp, void* out,

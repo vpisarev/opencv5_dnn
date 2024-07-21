@@ -287,12 +287,12 @@ static void maxpool2d_16(const _Tp* inp_, _Tp* out_, const ConvState& cs)
 
 static void maxpool2d_16f(const void* inp_, void* out_, const ConvState& cs)
 {
-    maxpool2d_16((const float16_t*)inp_, (float16_t*)out_, cs);
+    maxpool2d_16((const hfloat*)inp_, (hfloat*)out_, cs);
 }
 
 static void maxpool2d_16bf(const void* inp_, void* out_, const ConvState& cs)
 {
-    maxpool2d_16((const bfloat16_t*)inp_, (bfloat16_t*)out_, cs);
+    maxpool2d_16((const bfloat*)inp_, (bfloat*)out_, cs);
 }
 
 typedef void (*maxpool_func_t)(const void* inp, void* out, const ConvState& cs);

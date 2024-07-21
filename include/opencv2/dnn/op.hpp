@@ -861,8 +861,8 @@ struct CV_EXPORTS SplitOp : public BaseOp
     size_t noutputs;
 };
 
-CV_EXPORTS Arg split(Graph& graph, std::string_view opname, std::string_view outname,
-                     Arg input, Arg split, int axis, size_t noutputs);
+CV_EXPORTS std::vector<Arg> split(Graph& graph, std::string_view opname, std::string_view outname,
+                                  Arg input, Arg split, int axis, size_t noutputs);
 
 
 /*
